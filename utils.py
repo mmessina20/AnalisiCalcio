@@ -7,6 +7,7 @@ import re
 import pytz
 from datetime import datetime, timezone
 import streamlit as st
+import plotly.graph_objects as go
 import config  # Importa le configurazioni dal file config.py
 
 def normalize_name(name):
@@ -151,3 +152,30 @@ def crea_dataframe_confronto(metrics_list, home_stats, away_stats, team_home, te
         f"{team_away} (Gen)": [f"{away_stats['overall'][m]:.2f}" for m in metrics_list],
     }
     return pd.DataFrame(data).set_index("Metrica")
+
+def crea_grafico_confronto(val_h, val_a, label, team_h, team_a):
+    fig = go.Figure()
+    # Barra Squadra Casa (va verso sinistra, quindi valore negativo)
+    fig.add_trace(go.Bar(
+        y=[label], x=[-val_h], orientation='h',
+        name=team_h, marker_color='#00ff85',
+        hovertemplate=f"{team_h}: {val_h}"
+    ))
+    # Barra Squadra Ospite
+    fig.add_trace(go.Bar(
+        y=[label], x=[val_a], orientation='h',
+        name=team_a, marker_color='#3d5afe',
+        hovertemplate=f"{team_a}: {val_a}"
+    ))
+    
+    fig.update_layout(
+        barmode='relative',
+        height=150,
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        showlegend=False,
+        xaxis=dict(showgrid=False, zeroline=True, showticklabels=False),
+        yaxis=dict(showgrid=False)
+    )
+    return fig

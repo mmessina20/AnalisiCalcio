@@ -1,0 +1,9 @@
+[theme]
+primaryColor = "#00ff85" # Verde fluo tipo Premier League
+backgroundColor = "#0e1117" # Grigio quasi nero
+secondaryBackgroundColor = "#1f2937" # Grigio scuro per le card
+textColor = "#ffffff"
+font = "sans serif"
+
+[server]
+headless = true
