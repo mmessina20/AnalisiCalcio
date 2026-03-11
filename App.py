@@ -153,26 +153,46 @@ elif st.session_state.pagina_corrente == "analisi" and st.session_state.match_se
                     
                     st.write("")
                     
+                    # --- SEZIONE TAB ANALISI AVANZATA (VERSIONE COMPLETA) ---
                     tab1, tab2, tab3, tab4 = st.tabs(["⚽ GOL", "🎯 TIRI", "🚩 CORNER", "🟨 DISCIPLINA"])
 
                     with tab1:
+                        st.markdown("### 📊 Media Gol Fatti e Subiti")
+                        # Ripristinate tutte le statistiche: Gol Fatti e Gol Subiti
                         st.dataframe(utils.crea_dataframe_confronto(['GF', 'GS'], s_h, s_a, match_home, match_away), use_container_width=True)
+                        
+                        # Grafico: Focus su Gol Fatti (Potenziale offensivo)
                         fig_gol = utils.crea_grafico_confronto(s_h['home']['GF'], s_a['away']['GF'], "Media Gol Fatti", match_home, match_away)
                         st.plotly_chart(fig_gol, use_container_width=True)
 
                     with tab2:
-                        st.dataframe(utils.crea_dataframe_confronto(['Tiri_Fatti', 'Porta_Fatti'], s_h, s_a, match_home, match_away), use_container_width=True)
-                        fig_tiri = utils.crea_grafico_confronto(s_h['home']['Porta_Fatti'], s_a['away']['Porta_Fatti'], "Tiri in Porta", match_home, match_away)
+                        st.markdown("### 🎯 Analisi Tiri e Precisione")
+                        # Ripristinati tutti i dati: Fatti, Subiti, In Porta Fatti, In Porta Subiti
+                        st.dataframe(utils.crea_dataframe_confronto(
+                            ['Tiri_Fatti', 'Tiri_Subiti', 'Porta_Fatti', 'Porta_Subiti'], 
+                            s_h, s_a, match_home, match_away
+                        ), use_container_width=True)
+                        
+                        # Grafico: Focus su Tiri in Porta Fatti
+                        fig_tiri = utils.crea_grafico_confronto(s_h['home']['Porta_Fatti'], s_a['away']['Porta_Fatti'], "Tiri in Porta (Media)", match_home, match_away)
                         st.plotly_chart(fig_tiri, use_container_width=True)
 
                     with tab3:
+                        st.markdown("### 🚩 Analisi Corner")
+                        # Ripristinati: Corner Fatti e Corner Subiti
                         st.dataframe(utils.crea_dataframe_confronto(['Corner_Fatti', 'Corner_Subiti'], s_h, s_a, match_home, match_away), use_container_width=True)
+                        
+                        # Grafico: Focus su Corner Guadagnati
                         fig_corn = utils.crea_grafico_confronto(s_h['home']['Corner_Fatti'], s_a['away']['Corner_Fatti'], "Corner a Favore", match_home, match_away)
                         st.plotly_chart(fig_corn, use_container_width=True)
 
                     with tab4:
+                        st.markdown("### 🟨 Disciplina e Falli")
+                        # Statistiche cartellini
                         st.dataframe(utils.crea_dataframe_confronto(['Gialli'], s_h, s_a, match_home, match_away), use_container_width=True)
-                        fig_cards = utils.crea_grafico_confronto(s_h['home']['Gialli'], s_a['away']['Gialli'], "Cartellini Gialli", match_home, match_away)
+                        
+                        # Grafico: Cartellini Gialli
+                        fig_cards = utils.crea_grafico_confronto(s_h['home']['Gialli'], s_a['away']['Gialli'], "Media Ammonizioni", match_home, match_away)
                         st.plotly_chart(fig_cards, use_container_width=True)
             else:
                 st.error("Squadre non trovate nel database storico.")
