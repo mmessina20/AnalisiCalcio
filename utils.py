@@ -52,7 +52,7 @@ def converti_orario_ita(data_utc_str):
 
 @st.cache_data(ttl=3600)
 def get_next_matchday_fixtures(api_league_code):
-    """Scarica il calendario dal provider API."""
+    """Scarica il calendario dal provider API includendo i loghi."""
     headers = {'X-Auth-Token': config.api_key}
     url = f"{config.BASE_URL_API}/competitions/{api_league_code}/matches?status=SCHEDULED"
     try:
@@ -67,15 +67,10 @@ def get_next_matchday_fixtures(api_league_code):
         
         if not future_matches: return [], None
         
-        # Logica speciale per ordinare le partite (utile per Champions e coppe)
         future_matches.sort(key=lambda x: x['utcDate'])
         next_matchday_num = future_matches[0]['matchday']
         fixtures_raw = [m for m in future_matches if m['matchday'] == next_matchday_num]
         
-        # Limite visualizzazione se ci sono troppe partite
-        if len(fixtures_raw) > 20: 
-            fixtures_raw = fixtures_raw[:20]
-
         fixtures_clean = []
         for m in fixtures_raw:
             dt_ita = converti_orario_ita(m['utcDate'])
@@ -84,7 +79,10 @@ def get_next_matchday_fixtures(api_league_code):
                 'Ora': dt_ita.strftime("%H:%M"),
                 'Casa': m['homeTeam']['name'],
                 'Ospite': m['awayTeam']['name'],
-                'Display': f"📅  {dt_ita.strftime('%d/%m %H:%M')}  |  🏠  **{m['homeTeam']['name']}**   vs   ✈️  **{m['awayTeam']['name']}**"
+                # AGGIUNTA LOGHI ( crest è l'URL dell'immagine )
+                'Logo_Casa': m['homeTeam'].get('crest'), 
+                'Logo_Ospite': m['awayTeam'].get('crest'),
+                'Display': f"📅 {dt_ita.strftime('%d/%m %H:%M')} | {m['homeTeam']['name']} vs {m['awayTeam']['name']}"
             })
         return fixtures_clean, next_matchday_num
     except Exception as e:

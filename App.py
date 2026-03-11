@@ -100,13 +100,26 @@ if st.session_state.pagina_corrente == "calendario":
             with cols[i % 2]:
                 with st.container(border=True):
                     c1, c2, c3 = st.columns([3, 1, 3])
-                    c1.markdown(f"<p style='text-align:right; font-size:1.2rem; font-weight:bold; margin:0;'>{match['Casa']}</p>", unsafe_allow_html=True)
-                    c2.markdown("<p style='text-align:center; color:#00ff85; font-weight:bold; margin:0;'>VS</p>", unsafe_allow_html=True)
-                    c3.markdown(f"<p style='text-align:left; font-size:1.2rem; font-weight:bold; margin:0;'>{match['Ospite']}</p>", unsafe_allow_html=True)
+                    with c1:
+                        if match.get('Logo_Casa'): st.image(match['Logo_Casa'], width=45)
+                        st.markdown(f"<p style='text-align:right; font-size:1.1rem; font-weight:bold; margin:0;'>{match['Casa']}</p>", unsafe_allow_html=True)
                     
-                    st.write("") # Spazio
+                    c2.markdown("<p style='text-align:center; color:#00ff85; font-weight:bold; margin-top:10px;'>VS</p>", unsafe_allow_html=True)
+                    
+                    with c3:
+                        # Div per allineare logo a destra
+                        if match.get('Logo_Ospite'): 
+                            st.markdown(f"<div style='text-align:right;'><img src='{match['Logo_Ospite']}' width='45'></div>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='text-align:left; font-size:1.1rem; font-weight:bold; margin:0;'>{match['Ospite']}</p>", unsafe_allow_html=True)
+                    
+                    st.write("") 
                     if st.button("ANALISI MATCH", key=f"btn_{i}"):
-                        st.session_state.match_selezionato = (match['Casa'], match['Ospite'])
+                        st.session_state.match_selezionato = {
+                            'casa': match['Casa'],
+                            'ospite': match['Ospite'],
+                            'logo_h': match.get('Logo_Casa'),
+                            'logo_a': match.get('Logo_Ospite')
+                        }
                         st.session_state.pagina_corrente = "analisi"
                         st.rerun()
     else:
@@ -114,14 +127,27 @@ if st.session_state.pagina_corrente == "calendario":
 
 # --- SEZIONE ANALISI ---
 elif st.session_state.pagina_corrente == "analisi" and st.session_state.match_selezionato:
-    nome_home_api, nome_away_api = st.session_state.match_selezionato
+    # Recupero dati dal dizionario del session state
+    m = st.session_state.match_selezionato
+    nome_home_api, nome_away_api = m['casa'], m['ospite']
+    logo_h, logo_a = m['logo_h'], m['logo_a']
     
     if st.button("⬅️ Torna al Calendario"):
         st.session_state.pagina_corrente = "calendario"
         st.session_state.match_selezionato = None
         st.rerun()
         
-    st.markdown(f"<h1 style='text-align:center;'>🏟️ {nome_home_api} vs {nome_away_api}</h1>", unsafe_allow_html=True)
+    # Header con Loghi
+    h_col1, h_col2, h_col3 = st.columns([2, 1, 2])
+    with h_col1:
+        if logo_h: st.image(logo_h, width=100)
+        st.header(nome_home_api)
+    with h_col2:
+        st.markdown("<h1 style='text-align:center; padding-top:20px;'>VS</h1>", unsafe_allow_html=True)
+    with h_col3:
+        if logo_a: st.markdown(f"<div style='text-align:right;'><img src='{logo_a}' width='100'></div>", unsafe_allow_html=True)
+        st.markdown(f"<h1 style='text-align:right;'>{nome_away_api}</h1>", unsafe_allow_html=True)
+
     st.divider()
 
     if codice_csv is None:
@@ -153,45 +179,33 @@ elif st.session_state.pagina_corrente == "analisi" and st.session_state.match_se
                     
                     st.write("")
                     
-                    # --- SEZIONE TAB ANALISI AVANZATA (VERSIONE COMPLETA) ---
+                    # --- SEZIONE TAB ANALISI AVANZATA ---
                     tab1, tab2, tab3, tab4 = st.tabs(["⚽ GOL", "🎯 TIRI", "🚩 CORNER", "🟨 DISCIPLINA"])
 
                     with tab1:
                         st.markdown("### 📊 Media Gol Fatti e Subiti")
-                        # Ripristinate tutte le statistiche: Gol Fatti e Gol Subiti
                         st.dataframe(utils.crea_dataframe_confronto(['GF', 'GS'], s_h, s_a, match_home, match_away), use_container_width=True)
-                        
-                        # Grafico: Focus su Gol Fatti (Potenziale offensivo)
                         fig_gol = utils.crea_grafico_confronto(s_h['home']['GF'], s_a['away']['GF'], "Media Gol Fatti", match_home, match_away)
                         st.plotly_chart(fig_gol, use_container_width=True)
 
                     with tab2:
                         st.markdown("### 🎯 Analisi Tiri e Precisione")
-                        # Ripristinati tutti i dati: Fatti, Subiti, In Porta Fatti, In Porta Subiti
                         st.dataframe(utils.crea_dataframe_confronto(
                             ['Tiri_Fatti', 'Tiri_Subiti', 'Porta_Fatti', 'Porta_Subiti'], 
                             s_h, s_a, match_home, match_away
                         ), use_container_width=True)
-                        
-                        # Grafico: Focus su Tiri in Porta Fatti
                         fig_tiri = utils.crea_grafico_confronto(s_h['home']['Porta_Fatti'], s_a['away']['Porta_Fatti'], "Tiri in Porta (Media)", match_home, match_away)
                         st.plotly_chart(fig_tiri, use_container_width=True)
 
                     with tab3:
                         st.markdown("### 🚩 Analisi Corner")
-                        # Ripristinati: Corner Fatti e Corner Subiti
                         st.dataframe(utils.crea_dataframe_confronto(['Corner_Fatti', 'Corner_Subiti'], s_h, s_a, match_home, match_away), use_container_width=True)
-                        
-                        # Grafico: Focus su Corner Guadagnati
                         fig_corn = utils.crea_grafico_confronto(s_h['home']['Corner_Fatti'], s_a['away']['Corner_Fatti'], "Corner a Favore", match_home, match_away)
                         st.plotly_chart(fig_corn, use_container_width=True)
 
                     with tab4:
                         st.markdown("### 🟨 Disciplina e Falli")
-                        # Statistiche cartellini
                         st.dataframe(utils.crea_dataframe_confronto(['Gialli'], s_h, s_a, match_home, match_away), use_container_width=True)
-                        
-                        # Grafico: Cartellini Gialli
                         fig_cards = utils.crea_grafico_confronto(s_h['home']['Gialli'], s_a['away']['Gialli'], "Media Ammonizioni", match_home, match_away)
                         st.plotly_chart(fig_cards, use_container_width=True)
             else:
