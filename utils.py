@@ -52,7 +52,7 @@ def converti_orario_ita(data_utc_str):
 @st.cache_data(ttl=3600)
 def get_next_matchday_fixtures(api_league_code):
     """Scarica il calendario dal provider API."""
-    headers = {'X-Auth-Token': config.API_KEY}
+    headers = {'X-Auth-Token': config.api_key}
     url = f"{config.BASE_URL_API}/competitions/{api_league_code}/matches?status=SCHEDULED"
     try:
         response = requests.get(url, headers=headers)
