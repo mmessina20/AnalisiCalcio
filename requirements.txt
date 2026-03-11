@@ -1,0 +1,4 @@
+streamlit
+pandas
+requests
+# aggiungi altre librerie se le usi in utils.py (es. lxml, openpyxl, etc.)
