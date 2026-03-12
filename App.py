@@ -97,22 +97,33 @@ if st.session_state.pagina_corrente == "calendario":
     if fixtures:
         cols = st.columns(2)
         for i, match in enumerate(fixtures):
-            # Prendi i loghi o usa un'immagine trasparente se mancano
             img_h = match.get('Logo_Casa') if match.get('Logo_Casa') else ""
             img_a = match.get('Logo_Ospite') if match.get('Logo_Ospite') else ""
             
+            # Recuperiamo data e ora (assicurati che utils.py le passi correttamente)
+            data_match = match.get('Data', '--/--')
+            ora_match = match.get('Ora', '--:--')
+            
             with cols[i % 2]:
                 with st.container(border=True):
-                    # HTML COMPATTO SENZA COMMENTI
+                    # HTML AGGIORNATO CON DATA E ORA AL CENTRO
                     html_row = f"""
                     <div style="display: flex; align-items: center; justify-content: space-between; height: 50px;">
+                        <!-- SQUADRA CASA -->
                         <div style="display: flex; align-items: center; flex: 1; overflow: hidden;">
                             <img src="{img_h}" width="30" style="margin-right: 10px; object-fit: contain;">
                             <span style="font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                 {match['Casa']}
                             </span>
                         </div>
-                        <div style="width: 40px; text-align: center; color: #00ff85; font-weight: 900; font-size: 0.8rem;">VS</div>
+                        
+                        <!-- DATA E ORA AL CENTRO -->
+                        <div style="width: 70px; text-align: center; flex-shrink: 0; line-height: 1.1; border-left: 1px solid rgba(255,255,255,0.1); border-right: 1px solid rgba(255,255,255,0.1); padding: 0 5px;">
+                            <div style="font-size: 0.65rem; color: #888; font-weight: 400; text-transform: uppercase;">{data_match}</div>
+                            <div style="font-size: 0.85rem; color: #00ff85; font-weight: 800;">{ora_match}</div>
+                        </div>
+                        
+                        <!-- SQUADRA OSPITE -->
                         <div style="display: flex; align-items: center; flex: 1; justify-content: flex-end; overflow: hidden;">
                             <span style="font-weight: 700; font-size: 0.9rem; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 10px;">
                                 {match['Ospite']}
