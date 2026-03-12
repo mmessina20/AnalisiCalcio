@@ -92,38 +92,44 @@ codice_csv, codice_api = config.LEAGUES_CONFIG[st.session_state.lega_selezionata
 if st.session_state.pagina_corrente == "calendario":
     fixtures, giornata = utils.get_next_matchday_fixtures(codice_api)
     
-    st.markdown(f"<h2 style='text-align: center;'>📅 {st.session_state.lega_selezionata} - Giornata {giornata if giornata else '?'}</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 style='text-align: center; margin-bottom: 20px;'>📅 {st.session_state.lega_selezionata} - Giornata {giornata if giornata else '?'}</h2>", unsafe_allow_html=True)
     
     if fixtures:
         cols = st.columns(2)
         for i, match in enumerate(fixtures):
             with cols[i % 2]:
+                # Il container 'border=True' crea la card
                 with st.container(border=True):
-                    # Usiamo HTML Flexbox per mettere tutto su una riga
+                    # HTML UNIFICATO PER LOGHI E NOMI SULLA STESSA LINEA
                     st.markdown(f"""
-                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0;">
-                            <!-- Squadra Casa -->
-                            <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
-                                <img src="{match.get('Logo_Casa')}" width="30" height="30" style="object-fit: contain;">
-                                <span style="font-weight: 600; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; height: 40px;">
+                            <!-- SQUADRA CASA (Logo + Nome) -->
+                            <div style="display: flex; align-items: center; flex: 1; overflow: hidden;">
+                                <img src="{match.get('Logo_Casa')}" width="30" height="30" style="margin-right: 10px; object-fit: contain;">
+                                <span style="font-weight: 700; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                     {match['Casa']}
                                 </span>
                             </div>
                             
-                            <!-- Separatore VS -->
-                            <div style="color: #00ff85; font-weight: 800; font-size: 0.9rem;">VS</div>
+                            <!-- SEPARATORE VS -->
+                            <div style="width: 40px; text-align: center; color: #00ff85; font-weight: 900; font-size: 0.8rem; flex-shrink: 0;">
+                                VS
+                            </div>
                             
-                            <!-- Squadra Ospite -->
-                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; justify-content: flex-end;">
-                                <span style="font-weight: 600; font-size: 1rem; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            <!-- SQUADRA OSPITE (Nome + Logo) -->
+                            <div style="display: flex; align-items: center; flex: 1; justify-content: flex-end; overflow: hidden;">
+                                <span style="font-weight: 700; font-size: 0.95rem; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 10px;">
                                     {match['Ospite']}
                                 </span>
-                                <img src="{match.get('Logo_Ospite')}" width="30" height="30" style="object-fit: contain;">
+                                <img src="{match.get('Logo_Ospite')}" width="30" height="30" style="margin-left: 10px; object-fit: contain;">
                             </div>
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    # Bottone compatto sotto la riga
+                    # Spazio minimo tra info e bottone
+                    st.write('<div style="margin-top: 5px;"></div>', unsafe_allow_html=True)
+                    
+                    # Bottone che occupa tutta la larghezza della card
                     if st.button("ANALISI MATCH", key=f"btn_{i}", use_container_width=True):
                         st.session_state.match_selezionato = {
                             'casa': match['Casa'],
