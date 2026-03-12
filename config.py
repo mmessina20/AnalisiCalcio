@@ -22,7 +22,7 @@ TEAM_TRANSLATOR = {
     "Telstar 1963": "Telstar", "PSV": "PSV Eindhoven", "NEC": "Nijmegen", "NAC Breda": "NAC",
     "ADO Den Haag": "Den Haag", "SBV Excelsior": "Excelsior", "Sparta Rotterdam": "Sparta Rott",
     "Fortuna Sittard": "For Sittard", "Go Ahead Eagles": "Go Ahead Eagles", "PEC Zwolle": "Zwolle",
-    "FC Volendam": "Volendam", "Almere City FC": "Almere City",
+    "FC Volendam": "Volendam", "Almere City FC": "Almere City", "AZ": "AZ Alkmaar", 
     
     # ITALIA
     "Internazionale Milano": "Inter", "AC Milan": "Milan", "AS Roma": "Roma", "SS Lazio": "Lazio",
