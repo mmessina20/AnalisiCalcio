@@ -99,21 +99,32 @@ if st.session_state.pagina_corrente == "calendario":
         for i, match in enumerate(fixtures):
             with cols[i % 2]:
                 with st.container(border=True):
-                    c1, c2, c3 = st.columns([3, 1, 3])
-                    with c1:
-                        if match.get('Logo_Casa'): st.image(match['Logo_Casa'], width=45)
-                        st.markdown(f"<p style='text-align:right; font-size:1.1rem; font-weight:bold; margin:0;'>{match['Casa']}</p>", unsafe_allow_html=True)
+                    # Usiamo HTML Flexbox per mettere tutto su una riga
+                    st.markdown(f"""
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0;">
+                            <!-- Squadra Casa -->
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                                <img src="{match.get('Logo_Casa')}" width="30" height="30" style="object-fit: contain;">
+                                <span style="font-weight: 600; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    {match['Casa']}
+                                </span>
+                            </div>
+                            
+                            <!-- Separatore VS -->
+                            <div style="color: #00ff85; font-weight: 800; font-size: 0.9rem;">VS</div>
+                            
+                            <!-- Squadra Ospite -->
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; justify-content: flex-end;">
+                                <span style="font-weight: 600; font-size: 1rem; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    {match['Ospite']}
+                                </span>
+                                <img src="{match.get('Logo_Ospite')}" width="30" height="30" style="object-fit: contain;">
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
                     
-                    c2.markdown("<p style='text-align:center; color:#00ff85; font-weight:bold; margin-top:10px;'>VS</p>", unsafe_allow_html=True)
-                    
-                    with c3:
-                        # Div per allineare logo a destra
-                        if match.get('Logo_Ospite'): 
-                            st.markdown(f"<div style='text-align:right;'><img src='{match['Logo_Ospite']}' width='45'></div>", unsafe_allow_html=True)
-                        st.markdown(f"<p style='text-align:left; font-size:1.1rem; font-weight:bold; margin:0;'>{match['Ospite']}</p>", unsafe_allow_html=True)
-                    
-                    st.write("") 
-                    if st.button("ANALISI MATCH", key=f"btn_{i}"):
+                    # Bottone compatto sotto la riga
+                    if st.button("ANALISI MATCH", key=f"btn_{i}", use_container_width=True):
                         st.session_state.match_selezionato = {
                             'casa': match['Casa'],
                             'ospite': match['Ospite'],
