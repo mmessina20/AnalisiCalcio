@@ -98,38 +98,36 @@ if st.session_state.pagina_corrente == "calendario":
         cols = st.columns(2)
         for i, match in enumerate(fixtures):
             with cols[i % 2]:
-                # Il container 'border=True' crea la card
                 with st.container(border=True):
-                    # HTML UNIFICATO PER LOGHI E NOMI SULLA STESSA LINEA
-                    st.markdown(f"""
-                        <div style="display: flex; align-items: center; justify-content: space-between; height: 40px;">
-                            <!-- SQUADRA CASA (Logo + Nome) -->
-                            <div style="display: flex; align-items: center; flex: 1; overflow: hidden;">
-                                <img src="{match.get('Logo_Casa')}" width="30" height="30" style="margin-right: 10px; object-fit: contain;">
-                                <span style="font-weight: 700; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                    {match['Casa']}
-                                </span>
-                            </div>
-                            
-                            <!-- SEPARATORE VS -->
-                            <div style="width: 40px; text-align: center; color: #00ff85; font-weight: 900; font-size: 0.8rem; flex-shrink: 0;">
-                                VS
-                            </div>
-                            
-                            <!-- SQUADRA OSPITE (Nome + Logo) -->
-                            <div style="display: flex; align-items: center; flex: 1; justify-content: flex-end; overflow: hidden;">
-                                <span style="font-weight: 700; font-size: 0.95rem; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 10px;">
-                                    {match['Ospite']}
-                                </span>
-                                <img src="{match.get('Logo_Ospite')}" width="30" height="30" style="margin-left: 10px; object-fit: contain;">
-                            </div>
+                    # USA ESATTAMENTE QUESTE RIGHE:
+                    html_code = f"""
+                    <div style="display: flex; align-items: center; justify-content: space-between; height: 40px; overflow: hidden;">
+                        <!-- SQUADRA CASA -->
+                        <div style="display: flex; align-items: center; flex: 1; overflow: hidden;">
+                            <img src="{match.get('Logo_Casa')}" width="30" style="margin-right: 8px; object-fit: contain;">
+                            <span style="font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                {match['Casa']}
+                            </span>
                         </div>
-                    """, unsafe_allow_html=True)
+                        
+                        <!-- VS CENTRALE -->
+                        <div style="width: 30px; text-align: center; color: #00ff85; font-weight: 900; font-size: 0.7rem; flex-shrink: 0;">
+                            VS
+                        </div>
+                        
+                        <!-- SQUADRA OSPITE -->
+                        <div style="display: flex; align-items: center; flex: 1; justify-content: flex-end; overflow: hidden;">
+                            <span style="font-weight: 700; font-size: 0.9rem; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 8px;">
+                                {match['Ospite']}
+                            </span>
+                            <img src="{match.get('Logo_Ospite')}" width="30" style="margin-left: 8px; object-fit: contain;">
+                        </div>
+                    </div>
+                    """
+                    # Questo è il comando che trasforma il codice in grafica:
+                    st.markdown(html_code, unsafe_allow_html=True)
                     
-                    # Spazio minimo tra info e bottone
-                    st.write('<div style="margin-top: 5px;"></div>', unsafe_allow_html=True)
-                    
-                    # Bottone che occupa tutta la larghezza della card
+                    # Bottone subito sotto
                     if st.button("ANALISI MATCH", key=f"btn_{i}", use_container_width=True):
                         st.session_state.match_selezionato = {
                             'casa': match['Casa'],
@@ -139,8 +137,6 @@ if st.session_state.pagina_corrente == "calendario":
                         }
                         st.session_state.pagina_corrente = "analisi"
                         st.rerun()
-    else:
-        st.warning("Nessuna partita trovata per questa lega.")
 
 # --- SEZIONE ANALISI ---
 elif st.session_state.pagina_corrente == "analisi" and st.session_state.match_selezionato:
