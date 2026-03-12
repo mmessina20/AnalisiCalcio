@@ -97,55 +97,49 @@ if st.session_state.pagina_corrente == "calendario":
     if fixtures:
         cols = st.columns(2)
         for i, match in enumerate(fixtures):
-            img_h = match.get('Logo_Casa') if match.get('Logo_Casa') else ""
-            img_a = match.get('Logo_Ospite') if match.get('Logo_Ospite') else ""
-            
-            # Recuperiamo data e ora (assicurati che utils.py le passi correttamente)
-            data_match = match.get('Data', '--/--')
-            ora_match = match.get('Ora', '--:--')
+            # 1. Recupero dati in variabili pulite
+            h_name = match.get('Casa', 'Casa')
+            a_name = match.get('Ospite', 'Ospite')
+            h_logo = match.get('Logo_Casa', '')
+            a_logo = match.get('Logo_Ospite', '')
+            m_date = match.get('Data', '--/--')
+            m_time = match.get('Ora', '--:--')
             
             with cols[i % 2]:
                 with st.container(border=True):
-                    # HTML AGGIORNATO CON DATA E ORA AL CENTRO
+                    # 2. Costruzione HTML (fai attenzione a non aggiungere spazi prima di <div>)
                     html_row = f"""
-                    <div style="display: flex; align-items: center; justify-content: space-between; height: 50px;">
-                        <!-- SQUADRA CASA -->
-                        <div style="display: flex; align-items: center; flex: 1; overflow: hidden;">
-                            <img src="{img_h}" width="30" style="margin-right: 10px; object-fit: contain;">
-                            <span style="font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                {match['Casa']}
-                            </span>
-                        </div>
-                        
-                        <!-- DATA E ORA AL CENTRO -->
-                        <div style="width: 70px; text-align: center; flex-shrink: 0; line-height: 1.1; border-left: 1px solid rgba(255,255,255,0.1); border-right: 1px solid rgba(255,255,255,0.1); padding: 0 5px;">
-                            <div style="font-size: 0.65rem; color: #888; font-weight: 400; text-transform: uppercase;">{data_match}</div>
-                            <div style="font-size: 0.85rem; color: #00ff85; font-weight: 800;">{ora_match}</div>
-                        </div>
-                        
-                        <!-- SQUADRA OSPITE -->
-                        <div style="display: flex; align-items: center; flex: 1; justify-content: flex-end; overflow: hidden;">
-                            <span style="font-weight: 700; font-size: 0.9rem; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 10px;">
-                                {match['Ospite']}
-                            </span>
-                            <img src="{img_a}" width="30" style="margin-left: 10px; object-fit: contain;">
-                        </div>
-                    </div>
-                    """
+<div style="display: flex; align-items: center; justify-content: space-between; height: 50px; font-family: sans-serif;">
+    <div style="display: flex; align-items: center; flex: 1; overflow: hidden;">
+        <img src="{h_logo}" width="28" height="28" style="margin-right: 8px; object-fit: contain;">
+        <span style="font-weight: 700; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white;">{h_name}</span>
+    </div>
+    <div style="width: 65px; text-align: center; flex-shrink: 0; line-height: 1.2; padding: 0 5px; border-left: 1px solid #333; border-right: 1px solid #333;">
+        <div style="font-size: 0.6rem; color: #aaa; font-weight: 400;">{m_date}</div>
+        <div style="font-size: 0.8rem; color: #00ff85; font-weight: 800;">{m_time}</div>
+    </div>
+    <div style="display: flex; align-items: center; flex: 1; justify-content: flex-end; overflow: hidden;">
+        <span style="font-weight: 700; font-size: 0.85rem; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 8px; color: white;">{a_name}</span>
+        <img src="{a_logo}" width="28" height="28" style="margin-left: 8px; object-fit: contain;">
+    </div>
+</div>"""
+                    # 3. Renderizzazione (Assicurati che non ci sia st.write qui attorno)
                     st.markdown(html_row, unsafe_allow_html=True)
                     
+                    # Spazio e Bottone
+                    st.markdown('<div style="margin-top: 8px;"></div>', unsafe_allow_html=True)
                     if st.button("ANALISI MATCH", key=f"btn_{i}", use_container_width=True):
                         st.session_state.match_selezionato = {
-                            'casa': match['Casa'],
-                            'ospite': match['Ospite'],
-                            'logo_h': img_h,
-                            'logo_a': img_a
+                            'casa': h_name,
+                            'ospite': a_name,
+                            'logo_h': h_logo,
+                            'logo_a': a_logo
                         }
                         st.session_state.pagina_corrente = "analisi"
                         st.rerun()
     else:
         st.warning("Nessuna partita trovata per questa lega.")
-        
+
 # --- SEZIONE ANALISI ---
 elif st.session_state.pagina_corrente == "analisi" and st.session_state.match_selezionato:
     # Recupero dati dal dizionario del session state
