@@ -97,47 +97,44 @@ if st.session_state.pagina_corrente == "calendario":
     if fixtures:
         cols = st.columns(2)
         for i, match in enumerate(fixtures):
+            # Prendi i loghi o usa un'immagine trasparente se mancano
+            img_h = match.get('Logo_Casa') if match.get('Logo_Casa') else ""
+            img_a = match.get('Logo_Ospite') if match.get('Logo_Ospite') else ""
+            
             with cols[i % 2]:
                 with st.container(border=True):
-                    # USA ESATTAMENTE QUESTE RIGHE:
-                    html_code = f"""
-                    <div style="display: flex; align-items: center; justify-content: space-between; height: 40px; overflow: hidden;">
-                        <!-- SQUADRA CASA -->
+                    # HTML COMPATTO SENZA COMMENTI
+                    html_row = f"""
+                    <div style="display: flex; align-items: center; justify-content: space-between; height: 50px;">
                         <div style="display: flex; align-items: center; flex: 1; overflow: hidden;">
-                            <img src="{match.get('Logo_Casa')}" width="30" style="margin-right: 8px; object-fit: contain;">
+                            <img src="{img_h}" width="30" style="margin-right: 10px; object-fit: contain;">
                             <span style="font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                 {match['Casa']}
                             </span>
                         </div>
-                        
-                        <!-- VS CENTRALE -->
-                        <div style="width: 30px; text-align: center; color: #00ff85; font-weight: 900; font-size: 0.7rem; flex-shrink: 0;">
-                            VS
-                        </div>
-                        
-                        <!-- SQUADRA OSPITE -->
+                        <div style="width: 40px; text-align: center; color: #00ff85; font-weight: 900; font-size: 0.8rem;">VS</div>
                         <div style="display: flex; align-items: center; flex: 1; justify-content: flex-end; overflow: hidden;">
-                            <span style="font-weight: 700; font-size: 0.9rem; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 8px;">
+                            <span style="font-weight: 700; font-size: 0.9rem; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 10px;">
                                 {match['Ospite']}
                             </span>
-                            <img src="{match.get('Logo_Ospite')}" width="30" style="margin-left: 8px; object-fit: contain;">
+                            <img src="{img_a}" width="30" style="margin-left: 10px; object-fit: contain;">
                         </div>
                     </div>
                     """
-                    # Questo è il comando che trasforma il codice in grafica:
-                    st.markdown(html_code, unsafe_allow_html=True)
+                    st.markdown(html_row, unsafe_allow_html=True)
                     
-                    # Bottone subito sotto
                     if st.button("ANALISI MATCH", key=f"btn_{i}", use_container_width=True):
                         st.session_state.match_selezionato = {
                             'casa': match['Casa'],
                             'ospite': match['Ospite'],
-                            'logo_h': match.get('Logo_Casa'),
-                            'logo_a': match.get('Logo_Ospite')
+                            'logo_h': img_h,
+                            'logo_a': img_a
                         }
                         st.session_state.pagina_corrente = "analisi"
                         st.rerun()
-
+    else:
+        st.warning("Nessuna partita trovata per questa lega.")
+        
 # --- SEZIONE ANALISI ---
 elif st.session_state.pagina_corrente == "analisi" and st.session_state.match_selezionato:
     # Recupero dati dal dizionario del session state
