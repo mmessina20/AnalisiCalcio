@@ -333,7 +333,7 @@ elif st.session_state.pagina_corrente == "analisi":
         st.error("⚠️ Squadre non trovate nel database storico. Controlla il Mapping in config.py.")
         with st.expander("Debug nomi squadre"):
             st.write(f"Casa API: `{m['Casa']}` | Ospite API: `{m['Ospite']}`")
-          if codice_csv is None:
+              if codice_csv is None:
                 standings_dbg, df_eu_dbg, err_dbg = utils.scarica_statistiche_coppe_europee(codice_api)
                 if err_dbg:
                     st.info(err_dbg)
