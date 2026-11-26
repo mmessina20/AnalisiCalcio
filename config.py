@@ -1,24 +1,25 @@
 import streamlit as st
 
-# Recupero sicuro della chiave API senza mandare in crash l'app se secrets.toml manca
 try:
     api_key = st.secrets.get("API_KEY", "")
+    odds_api_key = st.secrets.get("ODDS_API_KEY", "")
 except Exception:
     api_key = ""
+    odds_api_key = ""
 
 BASE_URL_CSV = "https://www.football-data.co.uk/mmz4281"
 BASE_URL_API = "https://api.football-data.org/v4"
 
-# Formato: "Nome Visualizzato": ("Codice CSV", "Codice API")
+# Formato: "Nome Visualizzato": ("Codice CSV", "Codice API", "Chiave The-Odds-API")
 LEAGUES_CONFIG = {
-    "Champions League": (None, "CL"),
-    "Serie A (Italia)": ("I1", "SA"),
-    "Premier League (Inghilterra)": ("E0", "PL"),
-    "La Liga (Spagna)": ("SP1", "PD"),
-    "Bundesliga (Germania)": ("D1", "BL1"),
-    "Ligue 1 (Francia)": ("F1", "FL1"),
-    "Eredivisie (Olanda)": ("N1", "DED"),
-    "Primeira Liga (Portogallo)": ("P1", "PPL"),
+    "Champions League": (None, "CL", "soccer_uefa_champs_league"),
+    "Serie A (Italia)": ("I1", "SA", "soccer_italy_serie_a"),
+    "Premier League (Inghilterra)": ("E0", "PL", "soccer_epl"),
+    "La Liga (Spagna)": ("SP1", "PD", "soccer_spain_la_liga"),
+    "Bundesliga (Germania)": ("D1", "BL1", "soccer_germany_bundesliga"),
+    "Ligue 1 (Francia)": ("F1", "FL1", "soccer_france_ligue_one"),
+    "Eredivisie (Olanda)": ("N1", "DED", "soccer_netherlands_eredivisie"),
+    "Primeira Liga (Portogallo)": ("P1", "PPL", "soccer_portugal_primeira_liga"),
 }
 
 TEAM_TRANSLATOR = {
