@@ -186,7 +186,6 @@ def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
     except Exception as e:
         return {}, [], f"Errore di connessione all'API: {str(e)}"
 
-
 def valuta_value_bets(probs, q1, qx, q2, qo25=None, qu25=None):
     """Confronta le probabilità di Poisson con le quote 1X2 e Over/Under 2.5 (EV > 5%)."""
     value_list = []
@@ -215,7 +214,6 @@ def valuta_value_bets(probs, q1, qx, q2, qo25=None, qu25=None):
         except (ValueError, TypeError):
             continue
     return value_list
-
 
 def genera_badge_partita(match, df_csv):
     """Calcola badge rapidi su Over/Under 2.5, Corner e Value Bet (1X2 + O/U 2.5)."""
