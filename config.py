@@ -141,3 +141,4 @@ FBREF_TRANSLATOR = {
     "APOEL FC": "APOEL", "AC Omonia": "Omonia", "Pafos FC": "Pafos",
     "Maccabi Tel Aviv FC": "Maccabi Tel Aviv", "PFC Ludogorets 1945": "Ludogorets",
 }
+ALL_NATIONAL_CSV_CODES = ["I1", "E0", "SP1", "D1", "F1", "N1", "P1"]
