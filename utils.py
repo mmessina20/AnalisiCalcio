@@ -267,26 +267,6 @@ def _estrai_tabelle_fbref(html_text):
             continue
     return tabelle_estratte
 
-
-@st.cache_data(ttl=86400)
-def scarica_statistiche_ucl_fbref():
-    """Scarica da FBRef sia le statistiche fatte che quelle subite usando cloudscraper."""
-    url = "https://fbref.com/en/comps/8/Champions-League-Stats"
-    scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
-    try:
-        r = scraper.get(url, timeout=20)
-        if r.status_code != 200:
-            return None, None, f"FBRef ha bloccato la richiesta (HTTP {r.status_code}). Riprova più tardi."
-        tabelle = _estrai_tabelle_fbref(r.text)
-        df_std = tabelle.get("standard")
-        df_opp = tabelle.get("opponent")
-        if df_std is None or df_std.empty:
-            return None, None, "Tabelle UCL non trovate nella pagina FBRef."
-        return df_std, df_opp, None
-    except Exception as e:
-        return None, None, f"Errore durante lo scraping UCL: {str(e)}"
-
-
 def estrai_metriche_ucl_squadra(api_name, df_std, df_opp):
     """Combina statistiche fatte (df_std) e subite (df_opp) per una squadra UCL."""
     row_std = match_team_ucl(api_name, df_std)
