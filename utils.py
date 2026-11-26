@@ -186,72 +186,6 @@ def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
     except Exception as e:
         return {}, [], f"Errore di connessione all'API: {str(e)}"
 
-def valuta_value_bets(probs, q1, qx, q2, qo25=None, qu25=None):
-    """Confronta le probabilità di Poisson con le quote 1X2 e Over/Under 2.5 (EV > 5%)."""
-    value_list = []
-    mapping = [
-        ("1 (Casa)", probs['P1'], q1),
-        ("X (Pareggio)", probs['PX'], qx),
-        ("2 (Ospite)", probs['P2'], q2),
-        ("Over 2.5 Gol", probs['Over25'], qo25),
-        ("Under 2.5 Gol", probs['Under25'], qu25),
-    ]
-    for label, prob_pct, quota in mapping:
-        try:
-            q_val = float(quota)
-            if q_val > 1.0:
-                prob_dec = prob_pct / 100.0
-                ev = (prob_dec * q_val) - 1.0
-                quota_fair = 1.0 / prob_dec if prob_dec > 0 else 99.0
-                if ev > 0.05:
-                    value_list.append({
-                        'Mercato': label,
-                        'Prob_Modello': f"{prob_pct:.1f}%",
-                        'Quota_Book': f"{q_val:.2f}",
-                        'Quota_Fair': f"{quota_fair:.2f}",
-                        'EV': f"+{ev * 100:.1f}%",
-                    })
-        except (ValueError, TypeError):
-            continue
-    return value_list
-
-def genera_badge_partita(match, df_csv):
-    """Calcola badge rapidi su Over/Under 2.5, Corner e Value Bet (1X2 + O/U 2.5)."""
-    if df_csv is None or df_csv.empty:
-        return []
-    t_h = match_team_name(match['Casa'], df_csv['HomeTeam'].unique())
-    t_a = match_team_name(match['Ospite'], df_csv['AwayTeam'].unique())
-    if not t_h or not t_a:
-        return []
-
-    s_h = elabora_statistiche(df_csv, t_h, usa_forma_recente=True)
-    s_a = elabora_statistiche(df_csv, t_a, usa_forma_recente=True)
-
-    exp_gf_h = (s_h['home']['GF'] + s_a['away']['GS']) / 2
-    exp_gf_a = (s_a['away']['GF'] + s_h['home']['GS']) / 2
-    exp_gf = exp_gf_h + exp_gf_a
-    exp_corn = ((s_h['home']['Corner_Fatti'] + s_a['away']['Corner_Subiti']) / 2) + (
-        (s_a['away']['Corner_Fatti'] + s_h['home']['Corner_Subiti']) / 2
-    )
-    probs = calcola_probabilita_poisson(exp_gf_h, exp_gf_a)
-    v_bets = valuta_value_bets(
-        probs, match['Q1'], match['QX'], match['Q2'],
-        match.get('QO25'), match.get('QU25')
-    )
-
-    badges = []
-    if probs['Over25'] >= 60.0 or exp_gf >= 2.85:
-        badges.append((f"🔥 Over 2.5 ({probs['Over25']:.0f}%)", "#ff6b35"))
-    elif probs['Under25'] >= 62.0:
-        badges.append((f"🛡️ Under 2.5 ({probs['Under25']:.0f}%)", "#3d5afe"))
-
-    if exp_corn >= 10.5:
-        badges.append(("🚩 Corner > 10.5", "#00c896"))
-
-    if v_bets:
-        badges.append((f"💎 Value: {v_bets[0]['Mercato']} ({v_bets[0]['EV']})", "#d97706"))
-
-    return badges
 
 def _estrai_tabelle_fbref(html_text):
     """Estrae sia le tabelle visibili sia quelle nascoste nei commenti HTML di FBRef."""
@@ -326,7 +260,6 @@ def estrai_metriche_ucl_squadra(api_name, df_std, df_opp):
     porta_f = _find_val(row_std, ["Standard", "SoT"], _find_val(row_std, ["SoT"], 4.0 * mp)) / mp
     gialli = _find_val(row_std, ["CrdY"], 2.0 * mp) / mp
 
-    # Dati subiti reali dalla tabella Opponent Stats se disponibile
     row_opp = match_team_ucl(api_name, df_opp) if df_opp is not None else None
     if row_opp is not None:
         mp_opp = max(_find_val(row_opp, ["MP"], mp), 1.0)
@@ -337,7 +270,6 @@ def estrai_metriche_ucl_squadra(api_name, df_std, df_opp):
     else:
         gs, xg_s, tiri_s, porta_s = 1.2, 1.2, 11.0, 4.0
 
-    # Stima proporzionale dei corner dai tiri se non presenti nella tabella base
     corner_f = round(max(2.5, tiri_f * 0.44), 2)
     corner_s = round(max(2.5, tiri_s * 0.44), 2)
 
@@ -391,7 +323,7 @@ def _calcola_media_pesata(df_sub, cols, usa_forma_recente=False, n_recenti=5):
         return df_sub[cols].mean().to_dict()
 
     pesi = np.ones(len(df_sub))
-    pesi[-n_recenti:] = 2.0  # Peso doppio alle ultime 5 partite
+    pesi[-n_recenti:] = 2.0
     risultati = {}
     for c in cols:
         risultati[c] = float(np.average(df_sub[c].values, weights=pesi))
@@ -442,7 +374,6 @@ def calcola_probabilita_poisson(exp_gf_h, exp_gf_a, max_gol=8):
     p_x = float(np.sum(np.diag(matrice)))
     p_2 = float(np.sum(np.triu(matrice, 1)))
 
-    # Normalizzazione per residuo > max_gol
     tot = p_1 + p_x + p_2
     p_1, p_x, p_2 = p_1 / tot, p_x / tot, p_2 / tot
 
@@ -506,7 +437,7 @@ def valuta_value_bets(probs, q1, qx, q2, qo25=None, qu25=None):
 
 
 def genera_badge_partita(match, df_csv):
-    """Calcola badge rapidi per la card del calendario sui campionati nazionali."""
+    """Calcola badge rapidi su Over/Under 2.5, Corner e Value Bet (1X2 + O/U 2.5)."""
     if df_csv is None or df_csv.empty:
         return []
     t_h = match_team_name(match['Casa'], df_csv['HomeTeam'].unique())
@@ -517,73 +448,8 @@ def genera_badge_partita(match, df_csv):
     s_h = elabora_statistiche(df_csv, t_h, usa_forma_recente=True)
     s_a = elabora_statistiche(df_csv, t_a, usa_forma_recente=True)
 
-    exp_gf = ((s_h['home']['GF'] + s_a['away']['GS']) / 2) + ((s_a['away']['GF'] + s_h['home']['GS']) / 2)
+    exp_gf_h = (s_h['home']['GF'] + s_a['away']['GS']) / 2
+    exp_gf_a = (s_a['away']['GF'] + s_h['home']['GS']) / 2
+    exp_gf = exp_gf_h + exp_gf_a
     exp_corn = ((s_h['home']['Corner_Fatti'] + s_a['away']['Corner_Subiti']) / 2) + (
-        (s_a['away']['Corner_Fatti'] + s_h['home']['Corner_Subiti']) / 2
-    )
-    probs = calcola_probabilita_poisson(
-        (s_h['home']['GF'] + s_a['away']['GS']) / 2,
-        (s_a['away']['GF'] + s_h['home']['GS']) / 2,
-    )
-    v_bets = valuta_value_bets(probs, match['Q1'], match['QX'], match['Q2'])
-
-    badges = []
-    if probs['Over25'] >= 60.0 or exp_gf >= 2.85:
-        badges.append(("🔥 Alto Potenziale Over 2.5", "#ff6b35"))
-    elif probs['Under25'] >= 62.0:
-        badges.append(("🛡️ Partita Bloccata (Under 2.5)", "#3d5afe"))
-
-    if exp_corn >= 10.5:
-        badges.append(("🚩 Pioggia di Corner (>10.5)", "#00c896"))
-
-    if v_bets:
-        badges.append((f"💎 Value Bet: {v_bets[0]['Esito']}", "#eab308"))
-
-    return badges
-
-
-def crea_dataframe_confronto(metrics, s_h, s_a, t_h, t_a):
-    """Fix bug: verifica la presenza della chiave 'home'/'away' anziché GF > 0."""
-    data = {"Metrica": metrics}
-    type_h = 'home' if 'home' in s_h else 'overall'
-    type_a = 'away' if 'away' in s_a else 'overall'
-    data[f"{t_h} ({type_h.upper()})"] = [f"{s_h[type_h].get(m, 0):.2f}" for m in metrics]
-    data[f"{t_a} ({type_a.upper()})"] = [f"{s_a[type_a].get(m, 0):.2f}" for m in metrics]
-    return pd.DataFrame(data).set_index("Metrica")
-
-
-def crea_grafico_confronto(val_h, val_a, label, t_h, t_a, color_h='#00ff85', color_a='#3d5afe'):
-    """Grafico comparativo ad alta leggibilità con etichette numeriche esplicite e legenda."""
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        y=[label],
-        x=[val_h],
-        orientation='h',
-        name=t_h,
-        marker_color=color_h,
-        text=[f"{val_h:.2f}"],
-        textposition='auto',
-        textfont=dict(size=14, color='#0e1117', family='Inter')
-    ))
-    fig.add_trace(go.Bar(
-        y=[label],
-        x=[val_a],
-        orientation='h',
-        name=t_a,
-        marker_color=color_a,
-        text=[f"{val_a:.2f}"],
-        textposition='auto',
-        textfont=dict(size=14, color='#ffffff', family='Inter')
-    ))
-    fig.update_layout(
-        barmode='group',
-        height=170,
-        margin=dict(l=10, r=10, t=35, b=10),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(color="#ffffff")),
-        xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)', zeroline=True, showticklabels=True, color='#aaaaaa'),
-        yaxis=dict(showgrid=False, color='#ffffff')
-    )
-    return fig
+        (s
