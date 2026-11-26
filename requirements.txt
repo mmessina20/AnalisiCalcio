@@ -1,6 +1,11 @@
 streamlit
 pandas
+numpy
+scipy
 requests
+cloudscraper
+beautifulsoup4
 plotly
+lxml
+html5lib
 pytz
-# aggiungi altre librerie se le usi in utils.py (es. lxml, openpyxl, etc.)
