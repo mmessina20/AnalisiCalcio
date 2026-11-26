@@ -328,8 +328,8 @@ elif st.session_state.pagina_corrente == "analisi":
                 ),
                 use_container_width=True
             )
-
-     else:
+            
+    else:
         st.error("⚠️ Squadre non trovate nel database storico. Controlla il Mapping in config.py.")
         with st.expander("Debug nomi squadre"):
             st.write(f"Casa API: `{m['Casa']}` | Ospite API: `{m['Ospite']}`")
