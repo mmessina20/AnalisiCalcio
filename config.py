@@ -76,23 +76,68 @@ TEAM_TRANSLATOR = {
     "Brighton & Hove Albion FC": "Brighton", "AFC Bournemouth": "Bournemouth",
 }
 
-# Mapping specifico per i nomi su FBRef (Champions League)
 FBREF_TRANSLATOR = {
-    "FC Internazionale Milano": "Inter",
-    "Internazionale Milano": "Inter",
-    "Paris Saint-Germain FC": "Paris S-G",
-    "Club Atlético de Madrid": "Atlético Madrid",
-    "Sporting Clube de Portugal": "Sporting CP",
-    "Sport Lisboa e Benfica": "Benfica",
-    "FC Bayern München": "Bayern Munich",
-    "Bayer 04 Leverkusen": "Leverkusen",
-    "Manchester United FC": "Manchester Utd",
-    "Manchester City FC": "Manchester City",
-    "Newcastle United FC": "Newcastle Utd",
-    "Tottenham Hotspur FC": "Tottenham",
-    "Borussia Dortmund": "Dortmund",
-    "Real Madrid CF": "Real Madrid",
-    "FC Barcelona": "Barcelona",
-    "PSV": "PSV Eindhoven",
-    "Feyenoord Rotterdam": "Feyenoord",
+    # ITALIA
+    "FC Internazionale Milano": "Inter", "Internazionale Milano": "Inter",
+    "AC Milan": "Milan", "Juventus FC": "Juventus", "Atalanta BC": "Atalanta",
+    "Bologna FC 1909": "Bologna", "SSC Napoli": "Napoli",
+    "AS Roma": "Roma", "SS Lazio": "Lazio", "ACF Fiorentina": "Fiorentina",
+
+    # INGHILTERRA
+    "Arsenal FC": "Arsenal", "Manchester City FC": "Manchester City",
+    "Liverpool FC": "Liverpool", "Aston Villa FC": "Aston Villa",
+    "Manchester United FC": "Manchester Utd", "Newcastle United FC": "Newcastle Utd",
+    "Tottenham Hotspur FC": "Tottenham", "Chelsea FC": "Chelsea",
+    "West Ham United FC": "West Ham", "Brighton & Hove Albion FC": "Brighton",
+
+    # SPAGNA
+    "Real Madrid CF": "Real Madrid", "FC Barcelona": "Barcelona",
+    "Club Atlético de Madrid": "Atlético Madrid", "Girona FC": "Girona",
+    "Athletic Club": "Athletic Club", "Real Sociedad de Fútbol": "Real Sociedad",
+    "Real Betis Balompié": "Betis", "Villarreal CF": "Villarreal", "Sevilla FC": "Sevilla",
+
+    # GERMANIA
+    "FC Bayern München": "Bayern Munich", "Bayer 04 Leverkusen": "Leverkusen",
+    "Borussia Dortmund": "Dortmund", "RB Leipzig": "RB Leipzig",
+    "VfB Stuttgart": "Stuttgart", "Eintracht Frankfurt": "Eintracht Frankfurt",
+    "TSG 1899 Hoffenheim": "Hoffenheim", "1. FC Heidenheim 1846": "Heidenheim",
+    "SC Freiburg": "Freiburg",
+
+    # FRANCIA
+    "Paris Saint-Germain FC": "Paris S-G", "AS Monaco FC": "Monaco",
+    "LOSC Lille": "Lille", "Stade Brestois 29": "Brest",
+    "Olympique de Marseille": "Marseille", "Olympique Lyonnais": "Lyon",
+    "OGC Nice": "Nice", "RC Lens": "Lens",
+
+    # PORTOGALLO & OLANDA & BELGIO
+    "Sporting Clube de Portugal": "Sporting CP", "Sport Lisboa e Benfica": "Benfica",
+    "SL Benfica": "Benfica", "FC Porto": "Porto",
+    "Sporting Clube de Braga": "Braga", "Vitória SC": "Vitória Guimarães",
+    "PSV": "PSV Eindhoven", "PSV Eindhoven": "PSV Eindhoven",
+    "Feyenoord Rotterdam": "Feyenoord", "AFC Ajax": "Ajax",
+    "AZ": "AZ Alkmaar", "AZ Alkmaar": "AZ Alkmaar", "FC Twente '65": "Twente",
+    "Club Brugge KV": "Club Brugge", "RSC Anderlecht": "Anderlecht",
+    "Royale Union Saint-Gilloise": "Union SG", "KAA Gent": "Gent",
+
+    # RESTO D'EUROPA (UCL / UEL / UECL)
+    "Celtic FC": "Celtic", "Rangers FC": "Rangers",
+    "FC Red Bull Salzburg": "RB Salzburg", "SK Sturm Graz": "Sturm Graz",
+    "SK Rapid Wien": "Rapid Wien", "LASK": "LASK",
+    "BSC Young Boys": "Young Boys", "FC Lugano": "Lugano", "FC Basel 1893": "Basel",
+    "AC Sparta Praha": "Sparta Prague", "SK Slavia Praha": "Slavia Prague",
+    "FC Viktoria Plzeň": "Viktoria Plzeň", "FK Mladá Boleslav": "Mladá Boleslav",
+    "GNK Dinamo Zagreb": "Dinamo Zagreb", "HNK Rijeka": "Rijeka",
+    "FK Crvena Zvezda": "Red Star", "FK TSC Bačka Topola": "TSC Bačka Topola",
+    "FC Shakhtar Donetsk": "Shakhtar", "FC Dynamo Kyiv": "Dynamo Kyiv",
+    "ŠK Slovan Bratislava": "Slovan Bratislava",
+    "Galatasaray SK": "Galatasaray", "Fenerbahçe SK": "Fenerbahçe",
+    "Beşiktaş JK": "Beşiktaş", "İstanbul Başakşehir FK": "Başakşehir",
+    "Olympiacos CFP": "Olympiacos", "PAOK FC": "PAOK", "Panathinaikos FC": "Panathinaikos",
+    "FK Bodø/Glimt": "Bodø/Glimt", "Molde FK": "Molde",
+    "Malmö FF": "Malmö", "IF Elfsborg": "Elfsborg", "Djurgårdens IF": "Djurgården",
+    "FC København": "FC Copenhagen", "FC Midtjylland": "Midtjylland",
+    "Ferencvárosi TC": "Ferencváros", "Qarabağ FK": "Qarabağ",
+    "Legia Warszawa": "Legia Warsaw", "Jagiellonia Białystok": "Jagiellonia",
+    "APOEL FC": "APOEL", "AC Omonia": "Omonia", "Pafos FC": "Pafos",
+    "Maccabi Tel Aviv FC": "Maccabi Tel Aviv", "PFC Ludogorets 1945": "Ludogorets",
 }
