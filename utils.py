@@ -57,13 +57,13 @@ def match_team_ucl(api_name, fbref_df):
 
 
 def converti_orario_ita(data_utc_str):
-    utc_dt = datetime.strptime(data_utc_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    utc_dt = datetime.fromisoformat(data_utc_str.replace("Z", "+00:00"))
     return utc_dt.astimezone(pytz.timezone('Europe/Rome'))
 
 
 @st.cache_data(ttl=3600)
 def get_live_odds_from_odds_api(sport_key):
-    """Scarica sia le quote 1X2 (h2h) sia Over/Under 2.5 (totals) da The Odds API."""
+    """Scarica eventi, orari e quote 1X2 (h2h) + Over/Under 2.5 (totals) da The Odds API."""
     if not config.odds_api_key or not sport_key:
         return {}
     url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"
@@ -79,11 +79,12 @@ def get_live_odds_from_odds_api(sport_key):
             return {}
         odds_map = {}
         for event in r.json():
-            home = normalize_name(event.get("home_team", ""))
-            away = normalize_name(event.get("away_team", ""))
+            home_raw = event.get("home_team", "")
+            away_raw = event.get("away_team", "")
+            home = normalize_name(home_raw)
+            away = normalize_name(away_raw)
+            commence_time = event.get("commence_time", "")
             bookmakers = event.get("bookmakers", [])
-            if not bookmakers:
-                continue
 
             q1, qx, q2 = None, None, None
             qo25, qu25 = None, None
@@ -111,6 +112,9 @@ def get_live_odds_from_odds_api(sport_key):
                     break
 
             odds_map[(home, away)] = {
+                'home_raw': home_raw,
+                'away_raw': away_raw,
+                'commence_time': commence_time,
                 'Q1': round(q1, 2) if q1 else None,
                 'QX': round(qx, 2) if qx else None,
                 'Q2': round(q2, 2) if q2 else None,
@@ -124,25 +128,53 @@ def get_live_odds_from_odds_api(sport_key):
 
 @st.cache_data(ttl=3600)
 def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
-    """Scarica le partite programmate e integra quote 1X2 e Over/Under 2.5 reali."""
+    """Scarica le partite programmate; se football-data blocca EL/ECL (403), usa direttamente The Odds API."""
+    live_odds_map = get_live_odds_from_odds_api(odds_sport_key)
+
+    def _fallback_da_odds_api():
+        if not live_odds_map:
+            return {}, [], (
+                "Europa League e Conference League richiedono il piano a pagamento su football-data.org. "
+                "Inserisci ODDS_API_KEY nei Secrets per caricare automaticamente calendario e quote di queste coppe!"
+            )
+        fixtures_fallback = []
+        eventi_ordinati = sorted(live_odds_map.values(), key=lambda x: x.get('commence_time', ''))
+        for ev in eventi_ordinati:
+            dt = converti_orario_ita(ev['commence_time']) if ev.get('commence_time') else datetime.now()
+            fixtures_fallback.append({
+                'Data': dt.strftime("%d/%m"),
+                'Ora': dt.strftime("%H:%M"),
+                'Casa': ev['home_raw'],
+                'Ospite': ev['away_raw'],
+                'Logo_Casa': '',
+                'Logo_Ospite': '',
+                'Q1': f"{ev['Q1']:.2f}" if ev.get('Q1') else 'N.D.',
+                'QX': f"{ev['QX']:.2f}" if ev.get('QX') else 'N.D.',
+                'Q2': f"{ev['Q2']:.2f}" if ev.get('Q2') else 'N.D.',
+                'QO25': f"{ev['QO25']:.2f}" if ev.get('QO25') else 'N.D.',
+                'QU25': f"{ev['QU25']:.2f}" if ev.get('QU25') else 'N.D.',
+            })
+        return {0: fixtures_fallback}, [0], None
+
     if not config.api_key:
-        return {}, [], "Chiave API mancante. Configura API_KEY in .streamlit/secrets.toml o nei Secrets di Streamlit Cloud."
+        return _fallback_da_odds_api()
 
     headers = {'X-Auth-Token': config.api_key}
     url = f"{config.BASE_URL_API}/competitions/{api_league_code}/matches?status=SCHEDULED"
-    live_odds_map = get_live_odds_from_odds_api(odds_sport_key)
 
     try:
         response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 403:
+            return _fallback_da_odds_api()
         if response.status_code == 429:
             return {}, [], "Limite chiamate API raggiunto (max 10/minuto su piano gratuito). Attendi 60 secondi e ricarica."
         if response.status_code != 200:
-            return {}, [], f"Errore API football-data.org (HTTP {response.status_code}): {response.text[:150]}"
+            return _fallback_da_odds_api()
 
         data = response.json()
         matches = data.get('matches', [])
         if not matches:
-            return {}, [], "Nessuna partita programmata trovata per questa competizione."
+            return _fallback_da_odds_api()
 
         future_matches = sorted(matches, key=lambda x: x['utcDate'])
         fixtures_by_day = {}
@@ -183,8 +215,26 @@ def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
             })
         giornate_disponibili = sorted(fixtures_by_day.keys())
         return fixtures_by_day, giornate_disponibili, None
+    except Exception:
+        return _fallback_da_odds_api()
+
+
+@st.cache_data(ttl=86400)
+def scarica_statistiche_ucl_fbref(fbref_url="https://fbref.com/en/comps/8/Champions-League-Stats"):
+    """Scarica da FBRef sia le statistiche fatte che quelle subite per UCL, Europa League o Conference League."""
+    scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
+    try:
+        r = scraper.get(fbref_url, timeout=20)
+        if r.status_code != 200:
+            return None, None, f"FBRef ha bloccato la richiesta (HTTP {r.status_code}). Riprova più tardi."
+        tabelle = _estrai_tabelle_fbref(r.text)
+        df_std = tabelle.get("standard")
+        df_opp = tabelle.get("opponent")
+        if df_std is None or df_std.empty:
+            return None, None, "Tabelle non trovate nella pagina FBRef."
+        return df_std, df_opp, None
     except Exception as e:
-        return {}, [], f"Errore di connessione all'API: {str(e)}"
+        return None, None, f"Errore durante lo scraping FBRef: {str(e)}"
 
 
 def _estrai_tabelle_fbref(html_text):
