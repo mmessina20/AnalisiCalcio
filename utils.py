@@ -1,179 +1,438 @@
-# utils.py
-import requests
-import pandas as pd
 import io
-import difflib
 import re
-import pytz
+import difflib
 from datetime import datetime, timezone
+import pytz
+import requests
+import cloudscraper
+from bs4 import BeautifulSoup, Comment
+import pandas as pd
+import numpy as np
+from scipy.stats import poisson
 import streamlit as st
 import plotly.graph_objects as go
-import config  # Importa le configurazioni dal file config.py
+import config
+
 
 def normalize_name(name):
-    """Pulisce i nomi delle squadre per facilitare il confronto."""
-    if not isinstance(name, str): return ""
+    if not isinstance(name, str):
+        return ""
     name = name.lower()
-    name = re.sub(r'\b(19|20)\d{2}\b', '', name) 
-    name = re.sub(r'\b\d{2}\b', '', name) 
-    for garbage in ["fc", "ac", "as", "sc", "us", "cd", "cf", "vfl", "fsv", "tsg", "rb", "sv", "sbv", "pec", "rkc", "mvv", "jc", "sl", "acf", "ssc", "rcd"]:
-        name = name.replace(garbage, "")
     name = re.sub(r'[^a-z]', '', name)
     return name
 
+
 def match_team_name(api_name, csv_teams_list):
-    """Trova la corrispondenza tra il nome API e il nome nel CSV."""
+    if csv_teams_list is None or len(csv_teams_list) == 0:
+        return None
     if api_name in config.TEAM_TRANSLATOR:
         candidate = config.TEAM_TRANSLATOR[api_name]
-        matches_dict = difflib.get_close_matches(candidate, csv_teams_list, n=1, cutoff=0.6)
-        if matches_dict: return matches_dict[0]
-
+        if candidate in csv_teams_list:
+            return candidate
     api_clean = normalize_name(api_name)
-    best_match = None
-    best_score = 0.0
-    
+    best_match, best_score = None, 0.0
     for csv_team in csv_teams_list:
         csv_clean = normalize_name(csv_team)
-        if api_clean == csv_clean: return csv_team
-        if (len(api_clean) > 2 and len(csv_clean) > 2) and (api_clean in csv_clean or csv_clean in api_clean):
-            return csv_team
         score = difflib.SequenceMatcher(None, api_clean, csv_clean).ratio()
         if score > best_score:
             best_score = score
             best_match = csv_team
-            
-    if best_score > 0.55: return best_match
+    return best_match if best_score > 0.55 else None
+
+
+def match_team_ucl(api_name, fbref_df):
+    if fbref_df is None or fbref_df.empty:
+        return None
+    squad_col = fbref_df.columns[0]
+    squadre_db = fbref_df[squad_col].astype(str).tolist()
+    nome_target = config.FBREF_TRANSLATOR.get(api_name, config.TEAM_TRANSLATOR.get(api_name, api_name))
+
+    if nome_target in squadre_db:
+        return fbref_df[fbref_df[squad_col] == nome_target].iloc[0]
+
+    match = difflib.get_close_matches(nome_target, squadre_db, n=1, cutoff=0.45)
+    if match:
+        return fbref_df[fbref_df[squad_col] == match[0]].iloc[0]
     return None
 
+
 def converti_orario_ita(data_utc_str):
-    """Converte l'orario UTC in orario Italiano."""
     utc_dt = datetime.strptime(data_utc_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     return utc_dt.astimezone(pytz.timezone('Europe/Rome'))
 
+
 @st.cache_data(ttl=3600)
-def get_next_matchday_fixtures(api_league_code):
-    """Scarica il calendario dal provider API includendo i loghi."""
+def get_all_scheduled_fixtures(api_league_code):
+    """Scarica tutte le partite programmate restituendo dizionario per giornata, lista giornate ed eventuale errore."""
+    if not config.api_key:
+        return {}, [], "Chiave API mancante. Configura API_KEY in .streamlit/secrets.toml o nei Secrets di Streamlit Cloud."
+
     headers = {'X-Auth-Token': config.api_key}
     url = f"{config.BASE_URL_API}/competitions/{api_league_code}/matches?status=SCHEDULED"
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 429:
+            return {}, [], "Limite chiamate API raggiunto (max 10/minuto su piano gratuito). Attendi 60 secondi e ricarica."
+        if response.status_code != 200:
+            return {}, [], f"Errore API football-data.org (HTTP {response.status_code}): {response.text[:150]}"
+
         data = response.json()
         matches = data.get('matches', [])
-        if not matches: return [], None
+        if not matches:
+            return {}, [], "Nessuna partita programmata trovata per questa competizione."
 
-        now_utc = datetime.now(timezone.utc)
-        future_matches = [m for m in matches if datetime.strptime(m['utcDate'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc) > now_utc]
-        
-        if not future_matches: return [], None
-        
-        future_matches.sort(key=lambda x: x['utcDate'])
-        next_matchday_num = future_matches[0]['matchday']
-        fixtures_raw = [m for m in future_matches if m['matchday'] == next_matchday_num]
-        
-        fixtures_clean = []
-        for m in fixtures_raw:
-            dt_ita = converti_orario_ita(m['utcDate'])
-            fixtures_clean.append({
-                'Data': dt_ita.strftime("%d/%m"),
-                'Ora': dt_ita.strftime("%H:%M"),
+        future_matches = sorted(matches, key=lambda x: x['utcDate'])
+        fixtures_by_day = {}
+        for m in future_matches:
+            day = m.get('matchday') or 1
+            dt = converti_orario_ita(m['utcDate'])
+            odds = m.get('odds', {})
+            fixtures_by_day.setdefault(day, []).append({
+                'Data': dt.strftime("%d/%m"),
+                'Ora': dt.strftime("%H:%M"),
                 'Casa': m['homeTeam']['name'],
                 'Ospite': m['awayTeam']['name'],
-                # AGGIUNTA LOGHI ( crest è l'URL dell'immagine )
-                'Logo_Casa': m['homeTeam'].get('crest'), 
-                'Logo_Ospite': m['awayTeam'].get('crest'),
-                'Display': f"📅 {dt_ita.strftime('%d/%m %H:%M')} | {m['homeTeam']['name']} vs {m['awayTeam']['name']}"
+                'Logo_Casa': m['homeTeam'].get('crest', ''),
+                'Logo_Ospite': m['awayTeam'].get('crest', ''),
+                'Q1': odds.get('homeWin', 'N.D.'),
+                'QX': odds.get('draw', 'N.D.'),
+                'Q2': odds.get('awayWin', 'N.D.'),
             })
-        return fixtures_clean, next_matchday_num
+        giornate_disponibili = sorted(fixtures_by_day.keys())
+        return fixtures_by_day, giornate_disponibili, None
     except Exception as e:
-        print(f"Errore API: {e}")
-        return [], None
+        return {}, [], f"Errore di connessione all'API: {str(e)}"
+
+
+def _estrai_tabelle_fbref(html_text):
+    """Estrae sia le tabelle visibili sia quelle nascoste nei commenti HTML di FBRef."""
+    soup = BeautifulSoup(html_text, "lxml")
+    html_parts = [str(soup)]
+    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+        if "<table" in comment:
+            html_parts.append(str(comment))
+
+    tabelle_estratte = {}
+    for part in html_parts:
+        try:
+            tables = pd.read_html(io.StringIO(part))
+            for t in tables:
+                if isinstance(t.columns, pd.MultiIndex):
+                    t.columns = [
+                        '_'.join([str(c) for c in col if 'Unnamed' not in str(c)]).strip()
+                        for col in t.columns.values
+                    ]
+                cols_str = " ".join([str(c) for c in t.columns])
+                if "Squad" in cols_str and "MP" in cols_str:
+                    squad_col = [c for c in t.columns if "Squad" in str(c)][0]
+                    t = t[t[squad_col].notna() & (t[squad_col] != "Squad")].copy()
+                    if "against" in t[squad_col].iloc[0].lower() or "Opponent" in cols_str:
+                        tabelle_estratte["opponent"] = t
+                    elif "standard" not in tabelle_estratte:
+                        tabelle_estratte["standard"] = t
+        except Exception:
+            continue
+    return tabelle_estratte
+
+
+@st.cache_data(ttl=86400)
+def scarica_statistiche_ucl_fbref():
+    """Scarica da FBRef sia le statistiche fatte che quelle subite usando cloudscraper."""
+    url = "https://fbref.com/en/comps/8/Champions-League-Stats"
+    scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
+    try:
+        r = scraper.get(url, timeout=20)
+        if r.status_code != 200:
+            return None, None, f"FBRef ha bloccato la richiesta (HTTP {r.status_code}). Riprova più tardi."
+        tabelle = _estrai_tabelle_fbref(r.text)
+        df_std = tabelle.get("standard")
+        df_opp = tabelle.get("opponent")
+        if df_std is None or df_std.empty:
+            return None, None, "Tabelle UCL non trovate nella pagina FBRef."
+        return df_std, df_opp, None
+    except Exception as e:
+        return None, None, f"Errore durante lo scraping UCL: {str(e)}"
+
+
+def estrai_metriche_ucl_squadra(api_name, df_std, df_opp):
+    """Combina statistiche fatte (df_std) e subite (df_opp) per una squadra UCL."""
+    row_std = match_team_ucl(api_name, df_std)
+    if row_std is None:
+        return None
+
+    def _find_val(row, keywords, default=0.0):
+        for col in row.index:
+            col_l = str(col).lower()
+            if all(k.lower() in col_l for k in keywords):
+                try:
+                    return float(row[col])
+                except (ValueError, TypeError):
+                    continue
+        return default
+
+    mp = max(_find_val(row_std, ["MP"], 1.0), 1.0)
+    gf = _find_val(row_std, ["Performance", "Gls"], _find_val(row_std, ["Gls"], 0.0)) / mp
+    xg_f = _find_val(row_std, ["Expected", "xG"], gf * mp) / mp
+    tiri_f = _find_val(row_std, ["Standard", "Sh"], _find_val(row_std, ["Sh"], 11.0 * mp)) / mp
+    porta_f = _find_val(row_std, ["Standard", "SoT"], _find_val(row_std, ["SoT"], 4.0 * mp)) / mp
+    gialli = _find_val(row_std, ["CrdY"], 2.0 * mp) / mp
+
+    # Dati subiti reali dalla tabella Opponent Stats se disponibile
+    row_opp = match_team_ucl(api_name, df_opp) if df_opp is not None else None
+    if row_opp is not None:
+        mp_opp = max(_find_val(row_opp, ["MP"], mp), 1.0)
+        gs = _find_val(row_opp, ["Performance", "Gls"], _find_val(row_opp, ["Gls"], 1.2 * mp_opp)) / mp_opp
+        xg_s = _find_val(row_opp, ["Expected", "xG"], gs * mp_opp) / mp_opp
+        tiri_s = _find_val(row_opp, ["Standard", "Sh"], _find_val(row_opp, ["Sh"], 11.0 * mp_opp)) / mp_opp
+        porta_s = _find_val(row_opp, ["Standard", "SoT"], _find_val(row_opp, ["SoT"], 4.0 * mp_opp)) / mp_opp
+    else:
+        gs, xg_s, tiri_s, porta_s = 1.2, 1.2, 11.0, 4.0
+
+    # Stima proporzionale dei corner dai tiri se non presenti nella tabella base
+    corner_f = round(max(2.5, tiri_f * 0.44), 2)
+    corner_s = round(max(2.5, tiri_s * 0.44), 2)
+
+    stats = {
+        'GF': gf,
+        'GS': gs,
+        'xG_Fatti': xg_f,
+        'xG_Subiti': xg_s,
+        'Tiri_Fatti': tiri_f,
+        'Tiri_Subiti': tiri_s,
+        'Porta_Fatti': porta_f,
+        'Porta_Subiti': porta_s,
+        'Corner_Fatti': corner_f,
+        'Corner_Subiti': corner_s,
+        'Gialli': gialli,
+    }
+    return {'overall': stats}
+
 
 @st.cache_data(ttl=3600)
 def scarica_dati_csv(codice_lega, stagioni):
-    """Scarica i dati storici statistici (CSV)."""
-    if codice_lega is None:
-        return None
-        
-    lista_df = []
-    for stag in stagioni:
-        url = f"{config.BASE_URL_CSV}/{stag}/{codice_lega}.csv"
+    dfs = []
+    errori = []
+    for s in stagioni:
+        url = f"{config.BASE_URL_CSV}/{s}/{codice_lega}.csv"
         try:
-            headers = {"User-Agent": "Mozilla/5.0"}
-            r = requests.get(url, headers=headers)
-            r.raise_for_status()
-            df_temp = pd.read_csv(io.StringIO(r.text))
-            df_temp['Stagione'] = stag 
-            lista_df.append(df_temp)
-        except Exception:
-            continue
-    if not lista_df: return None
-    df_finale = pd.concat(lista_df, ignore_index=True)
-    df_finale['Date'] = pd.to_datetime(df_finale['Date'], dayfirst=True, errors='coerce')
-    return df_finale.sort_values(by='Date', ascending=False)
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+            if r.status_code == 200 and len(r.text) > 100:
+                df_temp = pd.read_csv(io.StringIO(r.text), on_bad_lines='skip')
+                df_temp['Stagione'] = s
+                dfs.append(df_temp)
+            else:
+                errori.append(f"Stagione {s}: HTTP {r.status_code}")
+        except Exception as e:
+            errori.append(f"Stagione {s}: {str(e)}")
+    if not dfs:
+        return None, " | ".join(errori) if errori else "Nessun dato CSV disponibile."
+    return pd.concat(dfs, ignore_index=True), None
 
-def elabora_statistiche(df, squadra):
-    """Calcola le medie statistiche per casa/fuori/overall."""
-    if df is None: return None
-    if squadra not in df['HomeTeam'].unique() and squadra not in df['AwayTeam'].unique(): return None
-    cols = ['GF', 'GS', 'Tiri_Fatti', 'Tiri_Subiti', 'Porta_Fatti', 'Porta_Subiti', 'Corner_Fatti', 'Corner_Subiti', 'Gialli']
-    
-    # Casa
-    df_home = df[df['HomeTeam'] == squadra].copy()
-    df_home_norm = df_home.rename(columns={'FTHG': 'GF', 'FTAG': 'GS', 'HS': 'Tiri_Fatti', 'AS': 'Tiri_Subiti', 'HST': 'Porta_Fatti', 'AST': 'Porta_Subiti', 'HC': 'Corner_Fatti', 'AC': 'Corner_Subiti', 'HY': 'Gialli'})
 
-    # Fuori
-    df_away = df[df['AwayTeam'] == squadra].copy()
-    df_away_norm = df_away.rename(columns={'FTAG': 'GF', 'FTHG': 'GS', 'AS': 'Tiri_Fatti', 'HS': 'Tiri_Subiti', 'AST': 'Porta_Fatti', 'HST': 'Porta_Subiti', 'AC': 'Corner_Fatti', 'HC': 'Corner_Subiti', 'AY': 'Gialli'})
-
+def _calcola_media_pesata(df_sub, cols, usa_forma_recente=False, n_recenti=5):
+    """Calcola la media semplice oppure ponderata (peso 2x sulle ultime N partite)."""
+    if df_sub.empty:
+        return {k: 0.0 for k in cols}
     for c in cols:
-        if c not in df_home_norm.columns: df_home_norm[c] = 0
-        if c not in df_away_norm.columns: df_away_norm[c] = 0
-        df_home_norm[c] = pd.to_numeric(df_home_norm[c], errors='coerce').fillna(0)
-        df_away_norm[c] = pd.to_numeric(df_away_norm[c], errors='coerce').fillna(0)
+        if c not in df_sub.columns:
+            df_sub[c] = 0.0
+        df_sub[c] = pd.to_numeric(df_sub[c], errors='coerce').fillna(0.0)
 
-    df_general = pd.concat([df_home_norm[cols], df_away_norm[cols]])
+    if not usa_forma_recente or len(df_sub) <= n_recenti:
+        return df_sub[cols].mean().to_dict()
 
-    def get_means(dataset):
-        if dataset.empty: return {k: 0.0 for k in cols}
-        return dataset[cols].mean(numeric_only=True).to_dict()
+    pesi = np.ones(len(df_sub))
+    pesi[-n_recenti:] = 2.0  # Peso doppio alle ultime 5 partite
+    risultati = {}
+    for c in cols:
+        risultati[c] = float(np.average(df_sub[c].values, weights=pesi))
+    return risultati
 
-    return {'overall': get_means(df_general), 'home': get_means(df_home_norm), 'away': get_means(df_away_norm)}
 
-def crea_dataframe_confronto(metrics_list, home_stats, away_stats, team_home, team_away):
-    """Crea la tabella comparativa per Streamlit."""
-    data = {
-        "Metrica": metrics_list,
-        f"{team_home} (Gen)": [f"{home_stats['overall'][m]:.2f}" for m in metrics_list],
-        f"{team_home} (CASA)": [f"{home_stats['home'][m]:.2f}" for m in metrics_list], 
-        f"{team_away} (FUORI)": [f"{away_stats['away'][m]:.2f}" for m in metrics_list], 
-        f"{team_away} (Gen)": [f"{away_stats['overall'][m]:.2f}" for m in metrics_list],
+def elabora_statistiche(df, squadra, usa_forma_recente=False):
+    cols = [
+        'GF', 'GS', 'Tiri_Fatti', 'Tiri_Subiti',
+        'Porta_Fatti', 'Porta_Subiti', 'Corner_Fatti', 'Corner_Subiti', 'Gialli'
+    ]
+    if 'Date' in df.columns:
+        df = df.copy()
+        df['Date_parsed'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
+        df = df.sort_values('Date_parsed')
+
+    h = df[df['HomeTeam'] == squadra].copy().rename(columns={
+        'FTHG': 'GF', 'FTAG': 'GS', 'HS': 'Tiri_Fatti', 'AS': 'Tiri_Subiti',
+        'HST': 'Porta_Fatti', 'AST': 'Porta_Subiti', 'HC': 'Corner_Fatti',
+        'AC': 'Corner_Subiti', 'HY': 'Gialli'
+    })
+    a = df[df['AwayTeam'] == squadra].copy().rename(columns={
+        'FTAG': 'GF', 'FTHG': 'GS', 'AS': 'Tiri_Fatti', 'HS': 'Tiri_Subiti',
+        'AST': 'Porta_Fatti', 'HST': 'Porta_Subiti', 'AC': 'Corner_Fatti',
+        'HC': 'Corner_Subiti', 'AY': 'Gialli'
+    })
+    overall_df = pd.concat([h, a])
+    if 'Date_parsed' in overall_df.columns:
+        overall_df = overall_df.sort_values('Date_parsed')
+
+    return {
+        'overall': _calcola_media_pesata(overall_df, cols, usa_forma_recente),
+        'home': _calcola_media_pesata(h, cols, usa_forma_recente),
+        'away': _calcola_media_pesata(a, cols, usa_forma_recente),
     }
+
+
+def calcola_probabilita_poisson(exp_gf_h, exp_gf_a, max_gol=8):
+    """Calcola probabilità 1X2, Over/Under 2.5, BTTS e risultati esatti tramite Poisson."""
+    exp_gf_h = max(0.05, float(exp_gf_h))
+    exp_gf_a = max(0.05, float(exp_gf_a))
+
+    prob_h = [poisson.pmf(i, exp_gf_h) for i in range(max_gol + 1)]
+    prob_a = [poisson.pmf(j, exp_gf_a) for j in range(max_gol + 1)]
+    matrice = np.outer(prob_h, prob_a)
+
+    p_1 = float(np.sum(np.tril(matrice, -1)))
+    p_x = float(np.sum(np.diag(matrice)))
+    p_2 = float(np.sum(np.triu(matrice, 1)))
+
+    # Normalizzazione per residuo > max_gol
+    tot = p_1 + p_x + p_2
+    p_1, p_x, p_2 = p_1 / tot, p_x / tot, p_2 / tot
+
+    p_under25 = 0.0
+    p_btts_yes = 0.0
+    risultati_esatti = []
+
+    for i in range(max_gol + 1):
+        for j in range(max_gol + 1):
+            p = matrice[i, j]
+            if i + j <= 2:
+                p_under25 += p
+            if i >= 1 and j >= 1:
+                p_btts_yes += p
+            risultati_esatti.append((f"{i}-{j}", float(p)))
+
+    p_over25 = max(0.0, 1.0 - p_under25)
+    p_btts_no = max(0.0, 1.0 - p_btts_yes)
+    risultati_esatti.sort(key=lambda x: x[1], reverse=True)
+
+    return {
+        'P1': p_1 * 100,
+        'PX': p_x * 100,
+        'P2': p_2 * 100,
+        'Over25': p_over25 * 100,
+        'Under25': p_under25 * 100,
+        'BTTS_Yes': p_btts_yes * 100,
+        'BTTS_No': p_btts_no * 100,
+        'Top_Scores': risultati_esatti[:3],
+    }
+
+
+def valuta_value_bets(probs, q1, qx, q2):
+    """Confronta le probabilità di Poisson con le quote reali per individuare Value Bet (EV > 5%)."""
+    value_list = []
+    mapping = [
+        ("1 (Casa)", probs['P1'], q1),
+        ("X (Pareggio)", probs['PX'], qx),
+        ("2 (Ospite)", probs['P2'], q2),
+    ]
+    for label, prob_pct, quota in mapping:
+        try:
+            q_val = float(quota)
+            if q_val > 1.0:
+                prob_dec = prob_pct / 100.0
+                ev = (prob_dec * q_val) - 1.0
+                quota_fair = 1.0 / prob_dec if prob_dec > 0 else 99.0
+                if ev > 0.05:  # Margine positivo > 5%
+                    value_list.append({
+                        'Esito': label,
+                        'Prob_Modello': f"{prob_pct:.1f}%",
+                        'Quota_Book': f"{q_val:.2f}",
+                        'Quota_Fair': f"{quota_fair:.2f}",
+                        'EV': f"+{ev * 100:.1f}%",
+                    })
+        except (ValueError, TypeError):
+            continue
+    return value_list
+
+
+def genera_badge_partita(match, df_csv):
+    """Calcola badge rapidi per la card del calendario sui campionati nazionali."""
+    if df_csv is None or df_csv.empty:
+        return []
+    t_h = match_team_name(match['Casa'], df_csv['HomeTeam'].unique())
+    t_a = match_team_name(match['Ospite'], df_csv['AwayTeam'].unique())
+    if not t_h or not t_a:
+        return []
+
+    s_h = elabora_statistiche(df_csv, t_h, usa_forma_recente=True)
+    s_a = elabora_statistiche(df_csv, t_a, usa_forma_recente=True)
+
+    exp_gf = ((s_h['home']['GF'] + s_a['away']['GS']) / 2) + ((s_a['away']['GF'] + s_h['home']['GS']) / 2)
+    exp_corn = ((s_h['home']['Corner_Fatti'] + s_a['away']['Corner_Subiti']) / 2) + (
+        (s_a['away']['Corner_Fatti'] + s_h['home']['Corner_Subiti']) / 2
+    )
+    probs = calcola_probabilita_poisson(
+        (s_h['home']['GF'] + s_a['away']['GS']) / 2,
+        (s_a['away']['GF'] + s_h['home']['GS']) / 2,
+    )
+    v_bets = valuta_value_bets(probs, match['Q1'], match['QX'], match['Q2'])
+
+    badges = []
+    if probs['Over25'] >= 60.0 or exp_gf >= 2.85:
+        badges.append(("🔥 Alto Potenziale Over 2.5", "#ff6b35"))
+    elif probs['Under25'] >= 62.0:
+        badges.append(("🛡️ Partita Bloccata (Under 2.5)", "#3d5afe"))
+
+    if exp_corn >= 10.5:
+        badges.append(("🚩 Pioggia di Corner (>10.5)", "#00c896"))
+
+    if v_bets:
+        badges.append((f"💎 Value Bet: {v_bets[0]['Esito']}", "#eab308"))
+
+    return badges
+
+
+def crea_dataframe_confronto(metrics, s_h, s_a, t_h, t_a):
+    """Fix bug: verifica la presenza della chiave 'home'/'away' anziché GF > 0."""
+    data = {"Metrica": metrics}
+    type_h = 'home' if 'home' in s_h else 'overall'
+    type_a = 'away' if 'away' in s_a else 'overall'
+    data[f"{t_h} ({type_h.upper()})"] = [f"{s_h[type_h].get(m, 0):.2f}" for m in metrics]
+    data[f"{t_a} ({type_a.upper()})"] = [f"{s_a[type_a].get(m, 0):.2f}" for m in metrics]
     return pd.DataFrame(data).set_index("Metrica")
 
-def crea_grafico_confronto(val_h, val_a, label, team_h, team_a):
+
+def crea_grafico_confronto(val_h, val_a, label, t_h, t_a, color_h='#00ff85', color_a='#3d5afe'):
+    """Grafico comparativo ad alta leggibilità con etichette numeriche esplicite e legenda."""
     fig = go.Figure()
-    # Barra Squadra Casa (va verso sinistra, quindi valore negativo)
     fig.add_trace(go.Bar(
-        y=[label], x=[-val_h], orientation='h',
-        name=team_h, marker_color='#00ff85',
-        hovertemplate=f"{team_h}: {val_h}"
+        y=[label],
+        x=[val_h],
+        orientation='h',
+        name=t_h,
+        marker_color=color_h,
+        text=[f"{val_h:.2f}"],
+        textposition='auto',
+        textfont=dict(size=14, color='#0e1117', family='Inter')
     ))
-    # Barra Squadra Ospite
     fig.add_trace(go.Bar(
-        y=[label], x=[val_a], orientation='h',
-        name=team_a, marker_color='#3d5afe',
-        hovertemplate=f"{team_a}: {val_a}"
+        y=[label],
+        x=[val_a],
+        orientation='h',
+        name=t_a,
+        marker_color=color_a,
+        text=[f"{val_a:.2f}"],
+        textposition='auto',
+        textfont=dict(size=14, color='#ffffff', family='Inter')
     ))
-    
     fig.update_layout(
-        barmode='relative',
-        height=150,
-        margin=dict(l=0, r=0, t=0, b=0),
+        barmode='group',
+        height=170,
+        margin=dict(l=10, r=10, t=35, b=10),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        showlegend=False,
-        xaxis=dict(showgrid=False, zeroline=True, showticklabels=False),
-        yaxis=dict(showgrid=False)
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(color="#ffffff")),
+        xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)', zeroline=True, showticklabels=True, color='#aaaaaa'),
+        yaxis=dict(showgrid=False, color='#ffffff')
     )
     return fig
