@@ -475,13 +475,15 @@ def calcola_probabilita_poisson(exp_gf_h, exp_gf_a, max_gol=8):
     }
 
 
-def valuta_value_bets(probs, q1, qx, q2):
-    """Confronta le probabilità di Poisson con le quote reali per individuare Value Bet (EV > 5%)."""
+def valuta_value_bets(probs, q1, qx, q2, qo25=None, qu25=None):
+    """Confronta le probabilità di Poisson con le quote 1X2 e Over/Under 2.5 (EV > 5%)."""
     value_list = []
     mapping = [
         ("1 (Casa)", probs['P1'], q1),
         ("X (Pareggio)", probs['PX'], qx),
         ("2 (Ospite)", probs['P2'], q2),
+        ("Over 2.5 Gol", probs['Over25'], qo25),
+        ("Under 2.5 Gol", probs['Under25'], qu25),
     ]
     for label, prob_pct, quota in mapping:
         try:
@@ -490,9 +492,9 @@ def valuta_value_bets(probs, q1, qx, q2):
                 prob_dec = prob_pct / 100.0
                 ev = (prob_dec * q_val) - 1.0
                 quota_fair = 1.0 / prob_dec if prob_dec > 0 else 99.0
-                if ev > 0.05:  # Margine positivo > 5%
+                if ev > 0.05:
                     value_list.append({
-                        'Esito': label,
+                        'Mercato': label,
                         'Prob_Modello': f"{prob_pct:.1f}%",
                         'Quota_Book': f"{q_val:.2f}",
                         'Quota_Fair': f"{quota_fair:.2f}",
