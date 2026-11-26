@@ -165,12 +165,11 @@ elif st.session_state.pagina_corrente == "analisi":
     s_h, s_a = None, None
     err_dati = None
 
-    if codice_csv is None:  # Coppe Europee (UCL / Europa League / Conference League su FBRef)
-        with st.spinner(f"Recupero dati completi {st.session_state.lega_selezionata} da FBRef..."):
-            df_std, df_opp, err_dati = utils.scarica_statistiche_ucl_fbref(url_fbref)
-            if df_std is not None:
-                s_h = utils.estrai_metriche_ucl_squadra(m['Casa'], df_std, df_opp)
-                s_a = utils.estrai_metriche_ucl_squadra(m['Ospite'], df_std, df_opp)
+    if codice_csv is None:  # Coppe Europee (API Standings + CSV Campionati Nazionali)
+        with st.spinner(f"Recupero dati {st.session_state.lega_selezionata} e campionati nazionali..."):
+            standings_map, df_europa_csv, err_dati = utils.scarica_statistiche_coppe_europee(codice_api)
+            s_h = utils.estrai_metriche_coppa_squadra(m['Casa'], standings_map, df_europa_csv)
+            s_a = utils.estrai_metriche_coppa_squadra(m['Ospite'], standings_map, df_europa_csv)
     else:  # Campionati Nazionali (CSV aggiornati al 26/27)
         col_opt1, col_opt2 = st.columns(2)
         with col_opt1:
@@ -334,11 +333,11 @@ elif st.session_state.pagina_corrente == "analisi":
         st.error("⚠️ Squadre non trovate nel database storico. Controlla il Mapping in config.py.")
         with st.expander("Debug nomi squadre"):
             st.write(f"Casa API: `{m['Casa']}` | Ospite API: `{m['Ospite']}`")
-            if codice_csv is None:
-                df_debug, _, _ = utils.scarica_statistiche_ucl_fbref(url_fbref)
-                if df_debug is not None:
-                    st.write("Nomi disponibili su FBRef UCL:", df_debug.iloc[:, 0].tolist())
-            else:
-                df_dbg_csv, _ = utils.scarica_dati_csv(codice_csv, ["2627"])
-                if df_dbg_csv is not None:
-                    st.write("Nomi disponibili nel CSV:", sorted(df_dbg_csv['HomeTeam'].dropna().unique().tolist()))
+          if codice_csv is None:
+                standings_dbg, df_eu_dbg, err_dbg = utils.scarica_statistiche_coppe_europee(codice_api)
+                if err_dbg:
+                    st.info(err_dbg)
+                if standings_dbg:
+                    st.write("**Squadre trovate in Classifica Coppa (API):**", sorted(list(standings_dbg.keys())))
+                if df_eu_dbg is not None and not df_eu_dbg.empty:
+                    st.write("**Squadre disponibili nei CSV Nazionali:**", sorted(df_eu_dbg['HomeTeam'].dropna().unique().tolist()))
