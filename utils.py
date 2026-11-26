@@ -62,13 +62,76 @@ def converti_orario_ita(data_utc_str):
 
 
 @st.cache_data(ttl=3600)
-def get_all_scheduled_fixtures(api_league_code):
-    """Scarica tutte le partite programmate restituendo dizionario per giornata, lista giornate ed eventuale errore."""
+def get_live_odds_from_odds_api(sport_key):
+    """Scarica sia le quote 1X2 (h2h) sia Over/Under 2.5 (totals) da The Odds API."""
+    if not config.odds_api_key or not sport_key:
+        return {}
+    url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"
+    params = {
+        "apiKey": config.odds_api_key,
+        "regions": "eu",
+        "markets": "h2h,totals",
+        "oddsFormat": "decimal"
+    }
+    try:
+        r = requests.get(url, params=params, timeout=12)
+        if r.status_code != 200:
+            return {}
+        odds_map = {}
+        for event in r.json():
+            home = normalize_name(event.get("home_team", ""))
+            away = normalize_name(event.get("away_team", ""))
+            bookmakers = event.get("bookmakers", [])
+            if not bookmakers:
+                continue
+
+            q1, qx, q2 = None, None, None
+            qo25, qu25 = None, None
+
+            for bm in bookmakers:
+                for mkt in bm.get("markets", []):
+                    if mkt.get("key") == "h2h" and q1 is None:
+                        for out in mkt.get("outcomes", []):
+                            name_norm = normalize_name(out.get("name", ""))
+                            price = out.get("price")
+                            if name_norm == "draw":
+                                qx = price
+                            elif difflib.SequenceMatcher(None, name_norm, home).ratio() > 0.6:
+                                q1 = price
+                            elif difflib.SequenceMatcher(None, name_norm, away).ratio() > 0.6:
+                                q2 = price
+                    elif mkt.get("key") == "totals" and qo25 is None:
+                        for out in mkt.get("outcomes", []):
+                            if out.get("point") == 2.5:
+                                if out.get("name") == "Over":
+                                    qo25 = out.get("price")
+                                elif out.get("name") == "Under":
+                                    qu25 = out.get("price")
+                if q1 and qx and q2 and qo25 and qu25:
+                    break
+
+            odds_map[(home, away)] = {
+                'Q1': round(q1, 2) if q1 else None,
+                'QX': round(qx, 2) if qx else None,
+                'Q2': round(q2, 2) if q2 else None,
+                'QO25': round(qo25, 2) if qo25 else None,
+                'QU25': round(qu25, 2) if qu25 else None,
+            }
+        return odds_map
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=3600)
+def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
+    """Scarica le partite programmate e integra quote 1X2 e Over/Under 2.5 reali."""
     if not config.api_key:
         return {}, [], "Chiave API mancante. Configura API_KEY in .streamlit/secrets.toml o nei Secrets di Streamlit Cloud."
 
     headers = {'X-Auth-Token': config.api_key}
     url = f"{config.BASE_URL_API}/competitions/{api_league_code}/matches?status=SCHEDULED"
+    live_odds_map = get_live_odds_from_odds_api(odds_sport_key)
+
     try:
         response = requests.get(url, headers=headers, timeout=15)
         if response.status_code == 429:
@@ -86,7 +149,25 @@ def get_all_scheduled_fixtures(api_league_code):
         for m in future_matches:
             day = m.get('matchday') or 1
             dt = converti_orario_ita(m['utcDate'])
-            odds = m.get('odds', {})
+            odds = m.get('odds') or {}
+
+            q1 = odds.get('homeWin') if isinstance(odds.get('homeWin'), (int, float)) else None
+            qx = odds.get('draw') if isinstance(odds.get('draw'), (int, float)) else None
+            q2 = odds.get('awayWin') if isinstance(odds.get('awayWin'), (int, float)) else None
+            qo25, qu25 = None, None
+
+            if live_odds_map:
+                h_norm = normalize_name(m['homeTeam']['name'])
+                a_norm = normalize_name(m['awayTeam']['name'])
+                for (oh, oa), o_dict in live_odds_map.items():
+                    if difflib.SequenceMatcher(None, h_norm, oh).ratio() > 0.6 and difflib.SequenceMatcher(None, a_norm, oa).ratio() > 0.6:
+                        q1 = q1 or o_dict.get('Q1')
+                        qx = qx or o_dict.get('QX')
+                        q2 = q2 or o_dict.get('Q2')
+                        qo25 = o_dict.get('QO25')
+                        qu25 = o_dict.get('QU25')
+                        break
+
             fixtures_by_day.setdefault(day, []).append({
                 'Data': dt.strftime("%d/%m"),
                 'Ora': dt.strftime("%H:%M"),
@@ -94,15 +175,85 @@ def get_all_scheduled_fixtures(api_league_code):
                 'Ospite': m['awayTeam']['name'],
                 'Logo_Casa': m['homeTeam'].get('crest', ''),
                 'Logo_Ospite': m['awayTeam'].get('crest', ''),
-                'Q1': odds.get('homeWin', 'N.D.'),
-                'QX': odds.get('draw', 'N.D.'),
-                'Q2': odds.get('awayWin', 'N.D.'),
+                'Q1': f"{q1:.2f}" if q1 else 'N.D.',
+                'QX': f"{qx:.2f}" if qx else 'N.D.',
+                'Q2': f"{q2:.2f}" if q2 else 'N.D.',
+                'QO25': f"{qo25:.2f}" if qo25 else 'N.D.',
+                'QU25': f"{qu25:.2f}" if qu25 else 'N.D.',
             })
         giornate_disponibili = sorted(fixtures_by_day.keys())
         return fixtures_by_day, giornate_disponibili, None
     except Exception as e:
         return {}, [], f"Errore di connessione all'API: {str(e)}"
 
+
+def valuta_value_bets(probs, q1, qx, q2, qo25=None, qu25=None):
+    """Confronta le probabilità di Poisson con le quote 1X2 e Over/Under 2.5 (EV > 5%)."""
+    value_list = []
+    mapping = [
+        ("1 (Casa)", probs['P1'], q1),
+        ("X (Pareggio)", probs['PX'], qx),
+        ("2 (Ospite)", probs['P2'], q2),
+        ("Over 2.5 Gol", probs['Over25'], qo25),
+        ("Under 2.5 Gol", probs['Under25'], qu25),
+    ]
+    for label, prob_pct, quota in mapping:
+        try:
+            q_val = float(quota)
+            if q_val > 1.0:
+                prob_dec = prob_pct / 100.0
+                ev = (prob_dec * q_val) - 1.0
+                quota_fair = 1.0 / prob_dec if prob_dec > 0 else 99.0
+                if ev > 0.05:
+                    value_list.append({
+                        'Mercato': label,
+                        'Prob_Modello': f"{prob_pct:.1f}%",
+                        'Quota_Book': f"{q_val:.2f}",
+                        'Quota_Fair': f"{quota_fair:.2f}",
+                        'EV': f"+{ev * 100:.1f}%",
+                    })
+        except (ValueError, TypeError):
+            continue
+    return value_list
+
+
+def genera_badge_partita(match, df_csv):
+    """Calcola badge rapidi su Over/Under 2.5, Corner e Value Bet (1X2 + O/U 2.5)."""
+    if df_csv is None or df_csv.empty:
+        return []
+    t_h = match_team_name(match['Casa'], df_csv['HomeTeam'].unique())
+    t_a = match_team_name(match['Ospite'], df_csv['AwayTeam'].unique())
+    if not t_h or not t_a:
+        return []
+
+    s_h = elabora_statistiche(df_csv, t_h, usa_forma_recente=True)
+    s_a = elabora_statistiche(df_csv, t_a, usa_forma_recente=True)
+
+    exp_gf_h = (s_h['home']['GF'] + s_a['away']['GS']) / 2
+    exp_gf_a = (s_a['away']['GF'] + s_h['home']['GS']) / 2
+    exp_gf = exp_gf_h + exp_gf_a
+    exp_corn = ((s_h['home']['Corner_Fatti'] + s_a['away']['Corner_Subiti']) / 2) + (
+        (s_a['away']['Corner_Fatti'] + s_h['home']['Corner_Subiti']) / 2
+    )
+    probs = calcola_probabilita_poisson(exp_gf_h, exp_gf_a)
+    v_bets = valuta_value_bets(
+        probs, match['Q1'], match['QX'], match['Q2'],
+        match.get('QO25'), match.get('QU25')
+    )
+
+    badges = []
+    if probs['Over25'] >= 60.0 or exp_gf >= 2.85:
+        badges.append((f"🔥 Over 2.5 ({probs['Over25']:.0f}%)", "#ff6b35"))
+    elif probs['Under25'] >= 62.0:
+        badges.append((f"🛡️ Under 2.5 ({probs['Under25']:.0f}%)", "#3d5afe"))
+
+    if exp_corn >= 10.5:
+        badges.append(("🚩 Corner > 10.5", "#00c896"))
+
+    if v_bets:
+        badges.append((f"💎 Value: {v_bets[0]['Mercato']} ({v_bets[0]['EV']})", "#d97706"))
+
+    return badges
 
 def _estrai_tabelle_fbref(html_text):
     """Estrae sia le tabelle visibili sia quelle nascoste nei commenti HTML di FBRef."""
