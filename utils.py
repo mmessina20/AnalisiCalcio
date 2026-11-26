@@ -452,4 +452,71 @@ def genera_badge_partita(match, df_csv):
     exp_gf_a = (s_a['away']['GF'] + s_h['home']['GS']) / 2
     exp_gf = exp_gf_h + exp_gf_a
     exp_corn = ((s_h['home']['Corner_Fatti'] + s_a['away']['Corner_Subiti']) / 2) + (
-        (s
+        (s_a['away']['Corner_Fatti'] + s_h['home']['Corner_Subiti']) / 2
+    )
+    probs = calcola_probabilita_poisson(exp_gf_h, exp_gf_a)
+    v_bets = valuta_value_bets(
+        probs, match['Q1'], match['QX'], match['Q2'],
+        match.get('QO25'), match.get('QU25')
+    )
+
+    badges = []
+    if probs['Over25'] >= 60.0 or exp_gf >= 2.85:
+        badges.append((f"🔥 Over 2.5 ({probs['Over25']:.0f}%)", "#ff6b35"))
+    elif probs['Under25'] >= 62.0:
+        badges.append((f"🛡️ Under 2.5 ({probs['Under25']:.0f}%)", "#3d5afe"))
+
+    if exp_corn >= 10.5:
+        badges.append(("🚩 Corner > 10.5", "#00c896"))
+
+    if v_bets:
+        badges.append((f"💎 Value: {v_bets[0]['Mercato']} ({v_bets[0]['EV']})", "#d97706"))
+
+    return badges
+
+
+def crea_dataframe_confronto(metrics, s_h, s_a, t_h, t_a):
+    """Verifica la presenza della chiave 'home'/'away' anziché GF > 0."""
+    data = {"Metrica": metrics}
+    type_h = 'home' if 'home' in s_h else 'overall'
+    type_a = 'away' if 'away' in s_a else 'overall'
+    data[f"{t_h} ({type_h.upper()})"] = [f"{s_h[type_h].get(m, 0):.2f}" for m in metrics]
+    data[f"{t_a} ({type_a.upper()})"] = [f"{s_a[type_a].get(m, 0):.2f}" for m in metrics]
+    return pd.DataFrame(data).set_index("Metrica")
+
+
+def crea_grafico_confronto(val_h, val_a, label, t_h, t_a, color_h='#00ff85', color_a='#3d5afe'):
+    """Grafico comparativo ad alta leggibilità con etichette numeriche esplicite e legenda."""
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=[label],
+        x=[val_h],
+        orientation='h',
+        name=t_h,
+        marker_color=color_h,
+        text=[f"{val_h:.2f}"],
+        textposition='auto',
+        textfont=dict(size=14, color='#0e1117', family='Inter')
+    ))
+    fig.add_trace(go.Bar(
+        y=[label],
+        x=[val_a],
+        orientation='h',
+        name=t_a,
+        marker_color=color_a,
+        text=[f"{val_a:.2f}"],
+        textposition='auto',
+        textfont=dict(size=14, color='#ffffff', family='Inter')
+    ))
+    fig.update_layout(
+        barmode='group',
+        height=170,
+        margin=dict(l=10, r=10, t=35, b=10),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(color="#ffffff")),
+        xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)', zeroline=True, showticklabels=True, color='#aaaaaa'),
+        yaxis=dict(showgrid=False, color='#ffffff')
+    )
+    return fig
