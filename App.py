@@ -56,11 +56,11 @@ with st.sidebar:
     st.divider()
     st.info("💡 Modello Poisson + Incrocio Offesa vs Difesa + Rilevamento Value Bet.")
 
-codice_csv, codice_api = config.LEAGUES_CONFIG[st.session_state.lega_selezionata]
+codice_csv, codice_api, codice_odds = config.LEAGUES_CONFIG[st.session_state.lega_selezionata]
 
 # --- PAGINA CALENDARIO ---
 if st.session_state.pagina_corrente == "calendario":
-    fixtures_by_day, giornate_disponibili, err_api = utils.get_all_scheduled_fixtures(codice_api)
+    fixtures_by_day, giornate_disponibili, err_api = utils.get_all_scheduled_fixtures(codice_api, codice_odds)
 
     if err_api:
         st.error(f"⚠️ {err_api}")
@@ -118,10 +118,13 @@ if st.session_state.pagina_corrente == "calendario":
                             <img src="{match['Logo_Ospite']}" width="35" style="margin-left: 10px;">
                         </div>
                     </div>
-                    <div style="display: flex; justify-content: center; gap: 18px; margin: 10px 0; background: #161b22; padding: 6px; border-radius: 6px;">
-                        <small>1: <b>{match['Q1']}</b></small>
-                        <small>X: <b>{match['QX']}</b></small>
-                        <small>2: <b>{match['Q2']}</b></small>
+                    <div style="display: flex; justify-content: space-around; margin: 10px 0; background: #161b22; padding: 6px; border-radius: 6px; font-size: 0.85rem;">
+                        <span>1: <b>{match['Q1']}</b></span>
+                        <span>X: <b>{match['QX']}</b></span>
+                        <span>2: <b>{match['Q2']}</b></span>
+                        <span style="color: #444;">|</span>
+                        <span style="color: #00ff85;">O2.5: <b>{match['QO25']}</b></span>
+                        <span style="color: #60a5fa;">U2.5: <b>{match['QU25']}</b></span>
                     </div>
                     """
                     st.markdown(html_card, unsafe_allow_html=True)
@@ -236,22 +239,37 @@ elif st.session_state.pagina_corrente == "analisi":
         with t0:
             st.subheader("Probabilità Calcolate (Distribuzione di Poisson)")
             p1_col, px_col, p2_col, btts_col = st.columns(4)
-            p1_col.metric(f"1 ({m['Casa']})", f"{probs['P1']:.1f}%", f"Quota API: {m['Q1']}")
-            px_col.metric("X (Pareggio)", f"{probs['PX']:.1f}%", f"Quota API: {m['QX']}")
-            p2_col.metric(f"2 ({m['Ospite']})", f"{probs['P2']:.1f}%", f"Quota API: {m['Q2']}")
-            btts_col.metric("Goal (Entrambe Segnano)", f"{probs['BTTS_Yes']:.1f}%", f"No Goal: {probs['BTTS_No']:.1f}%")
+            p1_col.metric(f"1 ({m['Casa']})", f"{probs['P1']:.1f}%", f"Quota: {m['Q1']}")
+            px_col.metric("X (Pareggio)", f"{probs['PX']:.1f}%", f"Quota: {m['QX']}")
+            p2_col.metric(f"2 ({m['Ospite']})", f"{probs['P2']:.1f}%", f"Quota: {m['Q2']}")
+            btts_col.metric("Goal / No Goal", f"{probs['BTTS_Yes']:.1f}%", f"No Goal: {probs['BTTS_No']:.1f}%")
+
+            st.markdown("#### Focus Linea Gol: Over / Under 2.5")
+            ou1, ou2, ou3 = st.columns(3)
+            ou1.metric("Over 2.5 (Modello)", f"{probs['Over25']:.1f}%", f"Quota Book: {m['QO25']}")
+            ou2.metric("Under 2.5 (Modello)", f"{probs['Under25']:.1f}%", f"Quota Book: {m['QU25']}")
+            ou3.metric("Quota Fair Over 2.5", f"{(100.0 / max(probs['Over25'], 1.0)):.2f}", f"Fair Under: {(100.0 / max(probs['Under25'], 1.0)):.2f}")
 
             st.markdown("#### Risultati Esatti Più Probabili")
             top_cols = st.columns(3)
             for idx, (score_str, prob_val) in enumerate(probs['Top_Scores']):
                 top_cols[idx].info(f"**{score_str}** — Probabilità: **{prob_val * 100:.1f}%**")
 
-            st.markdown("#### Analisi Quote & Value Bet (Margine Atteso > 5%)")
+            st.markdown("#### Analisi Quote & Value Bet (1X2 e Over/Under 2.5)")
+            st.caption("Le quote vengono caricate automaticamente se hai impostato ODDS_API_KEY, oppure puoi modificarle qui sotto:")
+            qc1, qc2, qc3, qc4, qc5 = st.columns(5)
+            q1_val = qc1.number_input("Quota 1", min_value=1.01, max_value=50.0, value=float(m['Q1']) if m['Q1'] != 'N.D.' else 2.00, step=0.05)
+            qx_val = qc2.number_input("Quota X", min_value=1.01, max_value=50.0, value=float(m['QX']) if m['QX'] != 'N.D.' else 3.30, step=0.05)
+            q2_val = qc3.number_input("Quota 2", min_value=1.01, max_value=50.0, value=float(m['Q2']) if m['Q2'] != 'N.D.' else 3.50, step=0.05)
+            qo25_val = qc4.number_input("Over 2.5", min_value=1.01, max_value=50.0, value=float(m['QO25']) if m['QO25'] != 'N.D.' else 1.85, step=0.05)
+            qu25_val = qc5.number_input("Under 2.5", min_value=1.01, max_value=50.0, value=float(m['QU25']) if m['QU25'] != 'N.D.' else 1.95, step=0.05)
+
+            value_bets = utils.valuta_value_bets(probs, q1_val, qx_val, q2_val, qo25_val, qu25_val)
             if value_bets:
-                st.success("💎 Rilevate opportunità con valore matematico positivo rispetto alle quote:")
+                st.success("💎 Rilevate opportunità con valore matematico positivo (EV > 5%):")
                 st.dataframe(pd.DataFrame(value_bets), use_container_width=True, hide_index=True)
             else:
-                st.info("Nessuna Value Bet significativa rilevata (o quote non disponibili per questo match).")
+                st.info("Nessuna Value Bet significativa rilevata con queste quote (EV ≤ 5%).")
 
         with t1:
             st.dataframe(utils.crea_dataframe_confronto(['GF', 'GS'], s_h, s_a, m['Casa'], m['Ospite']), use_container_width=True)
