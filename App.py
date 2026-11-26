@@ -56,7 +56,7 @@ with st.sidebar:
     st.divider()
     st.info("💡 Modello Poisson + Incrocio Offesa vs Difesa + Rilevamento Value Bet.")
 
-codice_csv, codice_api, codice_odds = config.LEAGUES_CONFIG[st.session_state.lega_selezionata]
+codice_csv, codice_api, codice_odds, url_fbref = config.LEAGUES_CONFIG[st.session_state.lega_selezionata]
 
 # --- PAGINA CALENDARIO ---
 if st.session_state.pagina_corrente == "calendario":
@@ -75,13 +75,14 @@ if st.session_state.pagina_corrente == "calendario":
                 "Giornata",
                 giornate_disponibili,
                 index=default_idx,
-                format_func=lambda x: f"Giornata {x}"
+                format_func=lambda x: "Prossimi Match" if x == 0 else f"Giornata {x}"
             )
             st.session_state.giornata_selezionata = giornata_scelta
 
         with col_title:
+            label_giornata = "Prossimi Match" if giornata_scelta == 0 else f"Giornata {giornata_scelta}"
             st.markdown(
-                f"<h2 style='margin-top:10px;'>📅 {st.session_state.lega_selezionata} - Giornata {giornata_scelta}</h2>",
+                f"<h2 style='margin-top:10px;'>📅 {st.session_state.lega_selezionata} - {label_giornata}</h2>",
                 unsafe_allow_html=True
             )
 
@@ -164,9 +165,9 @@ elif st.session_state.pagina_corrente == "analisi":
     s_h, s_a = None, None
     err_dati = None
 
-    if codice_csv is None:  # Champions League (FBRef con cloudscraper + Opponent Stats)
-        with st.spinner("Recupero dati completi UCL (Offesa + Difesa) da FBRef..."):
-            df_std, df_opp, err_dati = utils.scarica_statistiche_ucl_fbref()
+    if codice_csv is None:  # Coppe Europee (UCL / Europa League / Conference League su FBRef)
+        with st.spinner(f"Recupero dati completi {st.session_state.lega_selezionata} da FBRef..."):
+            df_std, df_opp, err_dati = utils.scarica_statistiche_ucl_fbref(url_fbref)
             if df_std is not None:
                 s_h = utils.estrai_metriche_ucl_squadra(m['Casa'], df_std, df_opp)
                 s_a = utils.estrai_metriche_ucl_squadra(m['Ospite'], df_std, df_opp)
@@ -334,7 +335,7 @@ elif st.session_state.pagina_corrente == "analisi":
         with st.expander("Debug nomi squadre"):
             st.write(f"Casa API: `{m['Casa']}` | Ospite API: `{m['Ospite']}`")
             if codice_csv is None:
-                df_debug, _, _ = utils.scarica_statistiche_ucl_fbref()
+                df_debug, _, _ = utils.scarica_statistiche_ucl_fbref(url_fbref)
                 if df_debug is not None:
                     st.write("Nomi disponibili su FBRef UCL:", df_debug.iloc[:, 0].tolist())
             else:
