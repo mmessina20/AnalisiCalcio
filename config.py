@@ -10,16 +10,18 @@ except Exception:
 BASE_URL_CSV = "https://www.football-data.co.uk/mmz4281"
 BASE_URL_API = "https://api.football-data.org/v4"
 
-# Formato: "Nome Visualizzato": ("Codice CSV", "Codice API", "Chiave The-Odds-API")
+# Formato: "Nome Visualizzato": ("Codice CSV", "Codice API", "Chiave The-Odds-API", "URL FBRef")
 LEAGUES_CONFIG = {
-    "Champions League": (None, "CL", "soccer_uefa_champs_league"),
-    "Serie A (Italia)": ("I1", "SA", "soccer_italy_serie_a"),
-    "Premier League (Inghilterra)": ("E0", "PL", "soccer_epl"),
-    "La Liga (Spagna)": ("SP1", "PD", "soccer_spain_la_liga"),
-    "Bundesliga (Germania)": ("D1", "BL1", "soccer_germany_bundesliga"),
-    "Ligue 1 (Francia)": ("F1", "FL1", "soccer_france_ligue_one"),
-    "Eredivisie (Olanda)": ("N1", "DED", "soccer_netherlands_eredivisie"),
-    "Primeira Liga (Portogallo)": ("P1", "PPL", "soccer_portugal_primeira_liga"),
+    "Champions League": (None, "CL", "soccer_uefa_champs_league", "https://fbref.com/en/comps/8/Champions-League-Stats"),
+    "Europa League": (None, "EL", "soccer_uefa_europa_league", "https://fbref.com/en/comps/19/Europa-League-Stats"),
+    "Conference League": (None, "ECL", "soccer_uefa_europa_conference_league", "https://fbref.com/en/comps/882/Conference-League-Stats"),
+    "Serie A (Italia)": ("I1", "SA", "soccer_italy_serie_a", None),
+    "Premier League (Inghilterra)": ("E0", "PL", "soccer_epl", None),
+    "La Liga (Spagna)": ("SP1", "PD", "soccer_spain_la_liga", None),
+    "Bundesliga (Germania)": ("D1", "BL1", "soccer_germany_bundesliga", None),
+    "Ligue 1 (Francia)": ("F1", "FL1", "soccer_france_ligue_one", None),
+    "Eredivisie (Olanda)": ("N1", "DED", "soccer_netherlands_eredivisie", None),
+    "Primeira Liga (Portogallo)": ("P1", "PPL", "soccer_portugal_primeira_liga", None),
 }
 
 TEAM_TRANSLATOR = {
