@@ -219,22 +219,92 @@ def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
         return _fallback_da_odds_api()
 
 
-@st.cache_data(ttl=86400)
-def scarica_statistiche_ucl_fbref(fbref_url="https://fbref.com/en/comps/8/Champions-League-Stats"):
-    """Scarica da FBRef sia le statistiche fatte che quelle subite per UCL, Europa League o Conference League."""
-    scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
-    try:
-        r = scraper.get(fbref_url, timeout=20)
-        if r.status_code != 200:
-            return None, None, f"FBRef ha bloccato la richiesta (HTTP {r.status_code}). Riprova più tardi."
-        tabelle = _estrai_tabelle_fbref(r.text)
-        df_std = tabelle.get("standard")
-        df_opp = tabelle.get("opponent")
-        if df_std is None or df_std.empty:
-            return None, None, "Tabelle non trovate nella pagina FBRef."
-        return df_std, df_opp, None
-    except Exception as e:
-        return None, None, f"Errore durante lo scraping FBRef: {str(e)}"
+@st.cache_data(ttl=3600)
+def scarica_statistiche_coppe_europee(api_league_code):
+    """Scarica classifica e gol reali della coppa da football-data.org (zero blocchi 403)
+    e carica i dati reali di tiri, corner e gialli dai campionati nazionali."""
+    standings_map = {}
+    err_msg = None
+
+    if config.api_key:
+        url = f"{config.BASE_URL_API}/competitions/{api_league_code}/standings"
+        headers = {'X-Auth-Token': config.api_key}
+        try:
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                for standing in data.get("standings", []):
+                    if standing.get("type") == "TOTAL":
+                        for row in standing.get("table", []):
+                            team_name = row.get("team", {}).get("name", "")
+                            mp = max(int(row.get("playedGames", 1)), 1)
+                            gf = float(row.get("goalsFor", 0)) / mp
+                            gs = float(row.get("goalsAgainst", 0)) / mp
+                            standings_map[team_name] = {'MP': mp, 'GF': gf, 'GS': gs}
+            elif r.status_code == 403:
+                err_msg = "Classifica coppa non inclusa nel piano gratuito API: uso i dati reali dai campionati nazionali."
+        except Exception as e:
+            err_msg = f"Avviso API standings: {str(e)}"
+
+    dfs_nazionali = []
+    for code in config.ALL_NATIONAL_CSV_CODES:
+        df_c, _ = scarica_dati_csv(code, ["2627"])
+        if df_c is not None and not df_c.empty:
+            dfs_nazionali.append(df_c)
+    df_europa_csv = pd.concat(dfs_nazionali, ignore_index=True) if dfs_nazionali else None
+
+    return standings_map, df_europa_csv, err_msg
+
+
+def estrai_metriche_coppa_squadra(api_name, standings_map, df_europa_csv):
+    """Combina Gol reali della Coppa (se disponibili) con Tiri/Corner/Gialli reali del campionato."""
+    coppa_stats = None
+    if standings_map:
+        if api_name in standings_map:
+            coppa_stats = standings_map[api_name]
+        else:
+            api_norm = normalize_name(api_name)
+            for k, v in standings_map.items():
+                if difflib.SequenceMatcher(None, api_norm, normalize_name(k)).ratio() > 0.7:
+                    coppa_stats = v
+                    break
+
+    naz_stats = None
+    if df_europa_csv is not None and not df_europa_csv.empty:
+        teams_csv = df_europa_csv['HomeTeam'].dropna().unique()
+        matched_csv_name = match_team_name(api_name, teams_csv)
+        if matched_csv_name:
+            naz_stats = elabora_statistiche(df_europa_csv, matched_csv_name, usa_forma_recente=True)['overall']
+
+    if coppa_stats is None and naz_stats is None:
+        return None
+
+    gf = coppa_stats['GF'] if coppa_stats else naz_stats['GF']
+    gs = coppa_stats['GS'] if coppa_stats else naz_stats['GS']
+
+    if naz_stats:
+        tiri_f, tiri_s = naz_stats['Tiri_Fatti'], naz_stats['Tiri_Subiti']
+        porta_f, porta_s = naz_stats['Porta_Fatti'], naz_stats['Porta_Subiti']
+        corner_f, corner_s = naz_stats['Corner_Fatti'], naz_stats['Corner_Subiti']
+        gialli = naz_stats['Gialli']
+    else:
+        tiri_f = round(max(6.0, gf * 8.2), 2)
+        tiri_s = round(max(6.0, gs * 8.2), 2)
+        porta_f = round(max(2.0, gf * 3.1), 2)
+        porta_s = round(max(2.0, gs * 3.1), 2)
+        corner_f = round(max(2.5, tiri_f * 0.44), 2)
+        corner_s = round(max(2.5, tiri_s * 0.44), 2)
+        gialli = 2.1
+
+    return {
+        'overall': {
+            'GF': gf, 'GS': gs,
+            'Tiri_Fatti': tiri_f, 'Tiri_Subiti': tiri_s,
+            'Porta_Fatti': porta_f, 'Porta_Subiti': porta_s,
+            'Corner_Fatti': corner_f, 'Corner_Subiti': corner_s,
+            'Gialli': gialli,
+        }
+    }
 
 
 def _estrai_tabelle_fbref(html_text):
@@ -266,58 +336,6 @@ def _estrai_tabelle_fbref(html_text):
         except Exception:
             continue
     return tabelle_estratte
-
-def estrai_metriche_ucl_squadra(api_name, df_std, df_opp):
-    """Combina statistiche fatte (df_std) e subite (df_opp) per una squadra UCL."""
-    row_std = match_team_ucl(api_name, df_std)
-    if row_std is None:
-        return None
-
-    def _find_val(row, keywords, default=0.0):
-        for col in row.index:
-            col_l = str(col).lower()
-            if all(k.lower() in col_l for k in keywords):
-                try:
-                    return float(row[col])
-                except (ValueError, TypeError):
-                    continue
-        return default
-
-    mp = max(_find_val(row_std, ["MP"], 1.0), 1.0)
-    gf = _find_val(row_std, ["Performance", "Gls"], _find_val(row_std, ["Gls"], 0.0)) / mp
-    xg_f = _find_val(row_std, ["Expected", "xG"], gf * mp) / mp
-    tiri_f = _find_val(row_std, ["Standard", "Sh"], _find_val(row_std, ["Sh"], 11.0 * mp)) / mp
-    porta_f = _find_val(row_std, ["Standard", "SoT"], _find_val(row_std, ["SoT"], 4.0 * mp)) / mp
-    gialli = _find_val(row_std, ["CrdY"], 2.0 * mp) / mp
-
-    row_opp = match_team_ucl(api_name, df_opp) if df_opp is not None else None
-    if row_opp is not None:
-        mp_opp = max(_find_val(row_opp, ["MP"], mp), 1.0)
-        gs = _find_val(row_opp, ["Performance", "Gls"], _find_val(row_opp, ["Gls"], 1.2 * mp_opp)) / mp_opp
-        xg_s = _find_val(row_opp, ["Expected", "xG"], gs * mp_opp) / mp_opp
-        tiri_s = _find_val(row_opp, ["Standard", "Sh"], _find_val(row_opp, ["Sh"], 11.0 * mp_opp)) / mp_opp
-        porta_s = _find_val(row_opp, ["Standard", "SoT"], _find_val(row_opp, ["SoT"], 4.0 * mp_opp)) / mp_opp
-    else:
-        gs, xg_s, tiri_s, porta_s = 1.2, 1.2, 11.0, 4.0
-
-    corner_f = round(max(2.5, tiri_f * 0.44), 2)
-    corner_s = round(max(2.5, tiri_s * 0.44), 2)
-
-    stats = {
-        'GF': gf,
-        'GS': gs,
-        'xG_Fatti': xg_f,
-        'xG_Subiti': xg_s,
-        'Tiri_Fatti': tiri_f,
-        'Tiri_Subiti': tiri_s,
-        'Porta_Fatti': porta_f,
-        'Porta_Subiti': porta_s,
-        'Corner_Fatti': corner_f,
-        'Corner_Subiti': corner_s,
-        'Gialli': gialli,
-    }
-    return {'overall': stats}
-
 
 @st.cache_data(ttl=3600)
 def scarica_dati_csv(codice_lega, stagioni):
