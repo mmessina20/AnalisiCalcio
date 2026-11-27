@@ -126,14 +126,14 @@ def get_live_odds_from_odds_api(sport_key):
         return {}
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=900)
 def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
-    """Scarica le partite programmate; se football-data blocca EL/ECL (403), usa direttamente The Odds API."""
+    """Scarica tutte le giornate (inclusa la giornata attuale fino a fine turno) e integra le quote live."""
     live_odds_map = get_live_odds_from_odds_api(odds_sport_key)
 
     def _fallback_da_odds_api():
         if not live_odds_map:
-            return {}, [], (
+            return {}, [], 0, (
                 "Europa League e Conference League richiedono il piano a pagamento su football-data.org. "
                 "Inserisci ODDS_API_KEY nei Secrets per caricare automaticamente calendario e quote di queste coppe!"
             )
@@ -144,6 +144,8 @@ def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
             fixtures_fallback.append({
                 'Data': dt.strftime("%d/%m"),
                 'Ora': dt.strftime("%H:%M"),
+                'Stato': 'SCHEDULED',
+                'Risultato': '',
                 'Casa': ev['home_raw'],
                 'Ospite': ev['away_raw'],
                 'Logo_Casa': '',
@@ -154,20 +156,21 @@ def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
                 'QO25': f"{ev['QO25']:.2f}" if ev.get('QO25') else 'N.D.',
                 'QU25': f"{ev['QU25']:.2f}" if ev.get('QU25') else 'N.D.',
             })
-        return {0: fixtures_fallback}, [0], None
+        return {0: fixtures_fallback}, [0], 0, None
 
     if not config.api_key:
         return _fallback_da_odds_api()
 
     headers = {'X-Auth-Token': config.api_key}
-    url = f"{config.BASE_URL_API}/competitions/{api_league_code}/matches?status=SCHEDULED"
+    # Rimosso ?status=SCHEDULED per mantenere visibili le partite della giornata corrente anche dopo il fischio d'inizio
+    url = f"{config.BASE_URL_API}/competitions/{api_league_code}/matches"
 
     try:
         response = requests.get(url, headers=headers, timeout=15)
         if response.status_code == 403:
             return _fallback_da_odds_api()
         if response.status_code == 429:
-            return {}, [], "Limite chiamate API raggiunto (max 10/minuto su piano gratuito). Attendi 60 secondi e ricarica."
+            return {}, [], None, "Limite chiamate API raggiunto (max 10/minuto su piano gratuito). Attendi 60 secondi e ricarica."
         if response.status_code != 200:
             return _fallback_da_odds_api()
 
@@ -176,13 +179,30 @@ def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
         if not matches:
             return _fallback_da_odds_api()
 
-        future_matches = sorted(matches, key=lambda x: x['utcDate'])
+        all_matches = sorted(matches, key=lambda x: x['utcDate'])
         fixtures_by_day = {}
-        for m in future_matches:
-            day = m.get('matchday') or 1
-            dt = converti_orario_ita(m['utcDate'])
-            odds = m.get('odds') or {}
+        current_day_api = None
 
+        for m in all_matches:
+            day = m.get('matchday') or 1
+            if current_day_api is None:
+                current_day_api = m.get('season', {}).get('currentMatchday')
+
+            dt = converti_orario_ita(m['utcDate'])
+            status = m.get('status', 'SCHEDULED')
+            full_time = (m.get('score') or {}).get('fullTime') or {}
+            gh, ga = full_time.get('home'), full_time.get('away')
+
+            if status == 'FINISHED' and gh is not None and ga is not None:
+                risultato = f"FINALE {gh}-{ga}"
+            elif status in ('IN_PLAY', 'PAUSED') and gh is not None and ga is not None:
+                risultato = f"LIVE {gh}-{ga}"
+            elif status == 'POSTPONED':
+                risultato = "RINVIATA"
+            else:
+                risultato = ""
+
+            odds = m.get('odds') or {}
             q1 = odds.get('homeWin') if isinstance(odds.get('homeWin'), (int, float)) else None
             qx = odds.get('draw') if isinstance(odds.get('draw'), (int, float)) else None
             q2 = odds.get('awayWin') if isinstance(odds.get('awayWin'), (int, float)) else None
@@ -203,6 +223,8 @@ def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
             fixtures_by_day.setdefault(day, []).append({
                 'Data': dt.strftime("%d/%m"),
                 'Ora': dt.strftime("%H:%M"),
+                'Stato': status,
+                'Risultato': risultato,
                 'Casa': m['homeTeam']['name'],
                 'Ospite': m['awayTeam']['name'],
                 'Logo_Casa': m['homeTeam'].get('crest', ''),
@@ -213,11 +235,21 @@ def get_all_scheduled_fixtures(api_league_code, odds_sport_key=None):
                 'QO25': f"{qo25:.2f}" if qo25 else 'N.D.',
                 'QU25': f"{qu25:.2f}" if qu25 else 'N.D.',
             })
+
         giornate_disponibili = sorted(fixtures_by_day.keys())
-        return fixtures_by_day, giornate_disponibili, None
+
+        # Determina la giornata attuale: rimane quella in corso finché non sono concluse tutte le sue partite
+        giornata_default = current_day_api if current_day_api in giornate_disponibili else giornate_disponibili[0]
+        if giornata_default in fixtures_by_day:
+            tutte_finite = all(p['Stato'] in ('FINISHED', 'POSTPONED', 'CANCELLED') for p in fixtures_by_day[giornata_default])
+            if tutte_finite:
+                idx_curr = giornate_disponibili.index(giornata_default)
+                if idx_curr + 1 < len(giornate_disponibili):
+                    giornata_default = giornate_disponibili[idx_curr + 1]
+
+        return fixtures_by_day, giornate_disponibili, giornata_default, None
     except Exception:
         return _fallback_da_odds_api()
-
 
 @st.cache_data(ttl=3600)
 def scarica_statistiche_coppe_europee(api_league_code):
