@@ -105,9 +105,13 @@ if st.session_state.pagina_corrente == "calendario":
                         badges_html = "<div style='margin-bottom:8px;'>" + "".join(
                             [f"<span class='badge-pill' style='background-color:{col};'>{txt}</span>" for txt, col in badges]
                         ) + "</div>"
-
+                    stato_html = (
+                        f"<span style='color:#00ff85; font-weight:700;'>{match['Risultato']}</span>"
+                        if match.get('Risultato')
+                        else f"📅 {match['Data']} | 🕒 {match['Ora']}"
+                    )
                     html_card = f"""
-                    {badges_html}
+                    {stato_html}
                     <div style="display: flex; align-items: center; justify-content: space-between; height: 60px;">
                         <div style="display: flex; align-items: center; flex: 1; overflow: hidden;">
                             <img src="{match['Logo_Casa']}" width="35" style="margin-right: 10px;">
