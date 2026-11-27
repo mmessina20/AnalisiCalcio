@@ -60,17 +60,20 @@ codice_csv, codice_api, codice_odds, url_fbref = config.LEAGUES_CONFIG[st.sessio
 
 # --- PAGINA CALENDARIO ---
 if st.session_state.pagina_corrente == "calendario":
-    fixtures_by_day, giornate_disponibili, err_api = utils.get_all_scheduled_fixtures(codice_api, codice_odds)
+    fixtures_by_day, giornate_disponibili, giornata_default, err_api = utils.get_all_scheduled_fixtures(codice_api, codice_odds)
 
     if err_api:
-        st.error(f"⚠️ {err_api}")
+        st.warning(f"⚠️ {err_api}")
     elif giornate_disponibili:
-        # Selettore Giornata
         col_title, col_day = st.columns([3, 1])
         with col_day:
-            default_idx = 0
-            if st.session_state.giornata_selezionata in giornate_disponibili:
-                default_idx = giornate_disponibili.index(st.session_state.giornata_selezionata)
+            if (
+                st.session_state.giornata_selezionata is None
+                or st.session_state.giornata_selezionata not in giornate_disponibili
+            ):
+                st.session_state.giornata_selezionata = giornata_default
+
+            default_idx = giornate_disponibili.index(st.session_state.giornata_selezionata)
             giornata_scelta = st.selectbox(
                 "Giornata",
                 giornate_disponibili,
